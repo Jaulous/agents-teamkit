@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -26,12 +27,15 @@ class TeamKitCliTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def run_cli(self, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+        env = os.environ.copy()
+        env["TEAMKIT_SKIP_RUNTIME_ENV"] = "1"
         result = subprocess.run(
             [sys.executable, str(CLI), *args],
             cwd=self.workdir,
             text=True,
             capture_output=True,
             check=False,
+            env=env,
         )
         if check and result.returncode != 0:
             self.fail(
@@ -579,7 +583,7 @@ class TeamKitCliTest(unittest.TestCase):
         self.assertTrue((package_dir / "skills" / "teamkit-runtime" / "SKILL.md").exists())
         wrapper_path = package_dir / "skills" / "teamkit-runtime" / "scripts" / "teamkit.py"
         self.assertTrue(wrapper_path.exists())
-        self.assertIn(".teamkit", wrapper_path.read_text(encoding="utf-8"))
+        self.assertIn(".agents-teamkit-runtime", wrapper_path.read_text(encoding="utf-8"))
         self.assertTrue((package_dir / "teamkit-workspace" / "team.yaml").exists())
         self.assertTrue((package_dir / "vendor" / "teamkit" / "teamkit" / "cli.py").exists())
 
@@ -635,7 +639,7 @@ class TeamKitCliTest(unittest.TestCase):
         self.assertTrue((package_dir / "skills" / "agent-prompt-optimizer" / "SKILL.md").exists())
         wrapper_path = package_dir / "skills" / "agents-teamkit-workbench-runtime" / "scripts" / "teamkit.py"
         self.assertTrue(wrapper_path.exists())
-        self.assertIn(".teamkit", wrapper_path.read_text(encoding="utf-8"))
+        self.assertIn(".agents-teamkit-runtime", wrapper_path.read_text(encoding="utf-8"))
         self.assertTrue((package_dir / "docs" / "coordination-model.md").exists())
         self.assertTrue((package_dir / "schemas" / "team.schema.json").exists())
         self.assertTrue((package_dir / "vendor" / "teamkit" / "teamkit" / "cli.py").exists())

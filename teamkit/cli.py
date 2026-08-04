@@ -9,6 +9,7 @@ import os
 import plistlib
 import re
 import shutil
+import subprocess
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -2421,11 +2422,11 @@ import sys
 from pathlib import Path
 
 
-def teamkit_python() -> str:
+def teamkit_python(plugin_root: Path) -> str:
     configured = os.environ.get("TEAMKIT_PYTHON", "").strip()
     if configured:
         return configured
-    managed = Path.home() / ".teamkit" / "venv" / "bin" / "python"
+    managed = plugin_root / ".agents-teamkit-runtime" / "venv" / "bin" / "python"
     if managed.exists():
         return str(managed)
     return sys.executable
@@ -2439,7 +2440,7 @@ def main() -> int:
     args = list(sys.argv[1:])
     if "--team" not in args and not any(arg.startswith("--team=") for arg in args):
         args = ["--team", str(team_file), *args]
-    return subprocess.call([teamkit_python(), str(teamkit_cli), *args])
+    return subprocess.call([teamkit_python(plugin_root), str(teamkit_cli), *args])
 
 
 if __name__ == "__main__":
@@ -2457,11 +2458,11 @@ import sys
 from pathlib import Path
 
 
-def teamkit_python() -> str:
+def teamkit_python(plugin_root: Path) -> str:
     configured = os.environ.get("TEAMKIT_PYTHON", "").strip()
     if configured:
         return configured
-    managed = Path.home() / ".teamkit" / "venv" / "bin" / "python"
+    managed = plugin_root / ".agents-teamkit-runtime" / "venv" / "bin" / "python"
     if managed.exists():
         return str(managed)
     return sys.executable
@@ -2471,7 +2472,7 @@ def main() -> int:
     script = Path(__file__).resolve()
     plugin_root = script.parents[3]
     teamkit_cli = plugin_root / "vendor" / "teamkit" / "teamkit" / "cli.py"
-    return subprocess.call([teamkit_python(), str(teamkit_cli), *sys.argv[1:]])
+    return subprocess.call([teamkit_python(plugin_root), str(teamkit_cli), *sys.argv[1:]])
 
 
 if __name__ == "__main__":
@@ -2819,7 +2820,7 @@ def export_workbuddy_package(ctx: TeamContext, out_root: Path, package_name: str
     ]
     plugin = {
         "name": package_name,
-        "version": "0.1.2",
+        "version": "0.1.3",
         "description": workbuddy_team_description(ctx),
         "author": {"name": "Agents TeamKit", "email": "teamkit@example.local"},
         "agents": agents,
@@ -2956,7 +2957,7 @@ def export_workbuddy_init_package(
 
     plugin = {
         "name": package_name,
-        "version": "0.1.2",
+        "version": "0.1.3",
         "description": "Agents TeamKit workbench package for creating, managing, validating, exporting, and improving multi-agent teams for WorkBuddy trial use.",
         "author": {"name": "Agents TeamKit", "email": "teamkit@example.local"},
         "agents": [f"./agents/{agent_id}.md"],
@@ -3118,6 +3119,70 @@ def unregister_workbuddy_package(package_name: str, config_dir: Path) -> tuple[P
     return manifest_path, removed
 
 
+def runtime_python_path(venv_dir: Path) -> Path:
+    if os.name == "nt":
+        return venv_dir / "Scripts" / "python.exe"
+    return venv_dir / "bin" / "python"
+
+
+def pip_runtime_env(strip_proxy: bool = False) -> dict[str, str]:
+    env = os.environ.copy()
+    env["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
+    env["PIP_NO_CACHE_DIR"] = "1"
+    if strip_proxy:
+        for key in ("ALL_PROXY", "HTTPS_PROXY", "HTTP_PROXY", "all_proxy", "https_proxy", "http_proxy"):
+            env.pop(key, None)
+    return env
+
+
+def run_python_module(python: Path, module: str, args: list[str], strip_proxy: bool = False) -> None:
+    cmd = [str(python), "-m", module, *args]
+    result = subprocess.run(
+        cmd,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=pip_runtime_env(strip_proxy=strip_proxy),
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise TeamKitError(f"failed to run {' '.join(cmd)}: {detail}")
+
+
+def ensure_workbuddy_runtime_env(package_dir: Path) -> Path | None:
+    if os.environ.get("TEAMKIT_SKIP_RUNTIME_ENV", "").strip().lower() in {"1", "true", "yes"}:
+        return None
+    teamkit_cli = package_dir / "vendor" / "teamkit" / "teamkit" / "cli.py"
+    if not teamkit_cli.exists():
+        return None
+    runtime_dir = package_dir / ".agents-teamkit-runtime"
+    venv_dir = runtime_dir / "venv"
+    python = runtime_python_path(venv_dir)
+    venv_result = subprocess.run(
+        [sys.executable, "-m", "venv", str(venv_dir)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if venv_result.returncode != 0:
+        detail = (venv_result.stderr or venv_result.stdout or "").strip()
+        raise TeamKitError(f"failed to create package-local runtime at {venv_dir}: {detail}")
+    proxy_text = "".join(
+        os.environ.get(key, "")
+        for key in ("ALL_PROXY", "HTTPS_PROXY", "HTTP_PROXY", "all_proxy", "https_proxy", "http_proxy")
+    )
+    try:
+        run_python_module(python, "pip", ["install", "PyYAML>=6.0"], strip_proxy=("socks" in proxy_text.lower()))
+    except TeamKitError:
+        run_python_module(python, "pip", ["install", "PyYAML>=6.0"], strip_proxy=True)
+    run_python_module(python, "pip", ["show", "PyYAML"], strip_proxy=True)
+    (runtime_dir / "README.md").write_text(
+        "Package-local Python runtime for Agents TeamKit. Safe to remove together with this WorkBuddy plugin.\n",
+        encoding="utf-8",
+    )
+    return runtime_dir
+
+
 def cmd_workbuddy_install(args: argparse.Namespace) -> int:
     source = Path(args.package).expanduser().resolve()
     if not source.exists() or not source.is_dir():
@@ -3132,12 +3197,15 @@ def cmd_workbuddy_install(args: argparse.Namespace) -> int:
         shutil.rmtree(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(source, target)
+    runtime_dir = ensure_workbuddy_runtime_env(target)
     manifest_path = register_workbuddy_package(target, config_dir, args.session_id or "teamkit-local-install")
     result = {
         "installedDir": str(target),
         "marketplacePath": str(manifest_path),
         "packageName": package_name,
     }
+    if runtime_dir:
+        result["runtimeDir"] = str(runtime_dir)
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:

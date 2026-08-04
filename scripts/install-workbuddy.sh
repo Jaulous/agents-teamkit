@@ -2,8 +2,7 @@
 set -euo pipefail
 
 TEAMKIT_REPO="${TEAMKIT_REPO:-Jaulous/agents-teamkit}"
-TEAMKIT_REF="${TEAMKIT_REF:-v0.1.2}"
-TEAMKIT_HOME="${TEAMKIT_HOME:-$HOME/.teamkit}"
+TEAMKIT_REF="${TEAMKIT_REF:-v0.1.3}"
 TEAMKIT_PYTHON_BIN="${TEAMKIT_PYTHON_BIN:-python3}"
 TEAMKIT_PACKAGE_NAME="${TEAMKIT_PACKAGE_NAME:-agents-teamkit-workbench}"
 TEAMKIT_SOURCE_DIR="${TEAMKIT_SOURCE_DIR:-}"
@@ -84,16 +83,15 @@ fi
 
 [ -f "$source_dir/pyproject.toml" ] || fail "TeamKit source is missing pyproject.toml: $source_dir"
 
-mkdir -p "$TEAMKIT_HOME"
-log "Preparing TeamKit Python runtime at $TEAMKIT_HOME/venv..."
-"$TEAMKIT_PYTHON_BIN" -m venv "$TEAMKIT_HOME/venv"
-venv_python="$TEAMKIT_HOME/venv/bin/python"
+log "Preparing temporary TeamKit Python runtime..."
+"$TEAMKIT_PYTHON_BIN" -m venv "$tmp_dir/venv"
+venv_python="$tmp_dir/venv/bin/python"
 [ -x "$venv_python" ] || fail "venv python was not created at $venv_python"
 
 pip_install install "PyYAML>=6.0" >/dev/null
-"$venv_python" -c "import yaml" || fail "PyYAML is not available in $TEAMKIT_HOME/venv"
+"$venv_python" -c "import yaml" || fail "PyYAML is not available in the temporary TeamKit runtime"
 
-build_root="$TEAMKIT_HOME/build/workbuddy"
+build_root="$tmp_dir/build/workbuddy"
 log "Exporting Agents TeamKit Workbench package..."
 "$venv_python" "$source_dir/bin/teamkit" workbuddy export-init \
   --out "$build_root" \

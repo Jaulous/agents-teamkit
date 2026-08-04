@@ -66,10 +66,10 @@ The first version is file-based and platform independent. WorkBuddy-native execu
 For a user who only wants to install Agents TeamKit 工作台 into WorkBuddy:
 
 ```sh
-/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.1.2/scripts/install-workbuddy.sh)"
+/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.1.3/scripts/install-workbuddy.sh)"
 ```
 
-This creates a managed Python runtime under `~/.teamkit/venv`, exports the Agents TeamKit 工作台 package, and registers it in the user's WorkBuddy expert marketplace.
+This uses a temporary build directory, installs the Agents TeamKit runtime inside the WorkBuddy plugin package, and registers Agents TeamKit 工作台 in the user's WorkBuddy expert marketplace.
 
 Install the Agents TeamKit 工作台 entry package first:
 
