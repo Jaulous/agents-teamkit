@@ -10,7 +10,7 @@ TEAMKIT_SOURCE_DIR="${TEAMKIT_SOURCE_DIR:-}"
 TEAMKIT_WORKBUDDY_CONFIG_DIR="${TEAMKIT_WORKBUDDY_CONFIG_DIR:-${WORKBUDDY_CONFIG_DIR:-}}"
 
 log() {
-  printf '%s\n' "$*"
+  printf '%s\n' "$*" >&2
 }
 
 fail() {
