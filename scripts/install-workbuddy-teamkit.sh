@@ -2,7 +2,7 @@
 set -euo pipefail
 
 TEAMKIT_REPO="${TEAMKIT_REPO:-Jaulous/workbuddy-agent-team-kit}"
-TEAMKIT_REF="${TEAMKIT_REF:-main}"
+TEAMKIT_REF="${TEAMKIT_REF:-v0.1.0}"
 TEAMKIT_HOME="${TEAMKIT_HOME:-$HOME/.teamkit}"
 TEAMKIT_PYTHON_BIN="${TEAMKIT_PYTHON_BIN:-python3}"
 TEAMKIT_PACKAGE_NAME="${TEAMKIT_PACKAGE_NAME:-teamkit-workbench}"
