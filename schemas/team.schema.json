@@ -1,0 +1,316 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/teamkit/team.schema.json",
+  "title": "TeamKit Team Definition",
+  "type": "object",
+  "required": ["version", "team", "experts", "process", "output"],
+  "properties": {
+    "version": {
+      "type": ["string", "number"]
+    },
+    "team": {
+      "type": "object",
+      "required": ["id", "name", "purpose"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "experts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "profile"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]*$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "profile": {
+            "type": "string",
+            "minLength": 1
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "contexts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]*$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": ["team", "agents"]
+          },
+          "visible_to": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "materials": {
+      "type": "object",
+      "properties": {
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "optional": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "process": {
+      "type": "object",
+      "required": ["mode", "graph"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["graph"]
+        },
+        "entry": {
+          "type": "string"
+        },
+        "lead": {
+          "type": "string"
+        },
+        "coordinator": {
+          "type": "string"
+        },
+        "communication": {
+          "type": "object",
+          "properties": {
+            "allow_expert_requests": {
+              "type": "boolean"
+            },
+            "default_response": {
+              "type": "string",
+              "enum": ["required", "optional", "none"]
+            },
+            "allowed_message_types": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "rules": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["from", "to", "when"],
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  },
+                  "when": {
+                    "type": "string"
+                  },
+                  "response": {
+                    "type": "string",
+                    "enum": ["required", "optional", "none"]
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "graph": {
+          "type": "object",
+          "required": ["entry", "nodes", "edges"],
+          "properties": {
+            "entry": {
+              "type": "string"
+            },
+            "nodes": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["id", "expert", "task"],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9_-]*$"
+                  },
+                  "expert": {
+                    "type": "string"
+                  },
+                  "task": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "edges": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["from", "to"],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9_-]*$"
+                  },
+                  "from": {
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  },
+                  "when": {
+                    "type": "string"
+                  },
+                  "relation": {
+                    "type": "string"
+                  },
+                  "max_visits": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "workspace": {
+      "type": "object",
+      "properties": {
+        "run_root": {
+          "type": "string"
+        },
+        "final_report": {
+          "type": "string"
+        },
+        "message_log": {
+          "type": "string"
+        },
+        "event_log": {
+          "type": "string"
+        },
+        "context_items_log": {
+          "type": "string"
+        },
+        "context_item_dir": {
+          "type": "string"
+        },
+        "human_review_log": {
+          "type": "string"
+        },
+        "decision_log": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "topic": {
+          "type": "string"
+        },
+        "expert_workspace_dir": {
+          "type": "string"
+        },
+        "expert_result_dir": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "human_review": {
+      "type": "object",
+      "properties": {
+        "required_when": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "format": {
+          "type": "string"
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

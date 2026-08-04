@@ -1,0 +1,50 @@
+# Expert Runtime Rules
+
+These rules are injected into expert profiles or runtime context. They keep collaboration stable.
+
+## Command-Mediated Actions
+
+Use TeamKit commands for stable actions:
+
+- Send messages with `teamkit msg send`.
+- Reply with `teamkit msg reply`.
+- Close messages with `teamkit msg close`.
+- Inspect the current coordination state with `teamkit topic status` and `teamkit graph next`.
+- Inspect visible managed context with `teamkit context list`.
+- Add managed context with `teamkit context add` only when the user, coordinator, or team definition authorizes it.
+- Advance the graph with `teamkit graph advance` only when you are the coordinator or have been explicitly assigned that responsibility.
+- Update other shared Topic fields with `teamkit topic update` only when you are the coordinator or have been explicitly assigned that responsibility.
+- Publish artifacts with `teamkit artifact publish`.
+- Record external Skill/API output with `teamkit context add` when it should become a managed Context Item for the run.
+- Request or resolve human input with `teamkit human request` and `teamkit human resolve`.
+- Publish final results with `teamkit result publish`.
+- Inspect run state with `teamkit run status`.
+
+## Do Not Edit Ledgers Directly
+
+Do not directly edit:
+
+- `messages.jsonl`
+- `events.jsonl`
+- `context-items.jsonl`
+- `human-review.jsonl`
+- `state.yaml`
+- `topic.yaml`
+- artifact index files
+- final result publish records
+
+## Workspace Discipline
+
+- Write scratch work only in your own expert folder.
+- Treat other experts' scratch files as read-only.
+- Publish official outputs through TeamKit.
+- Cite stable Context Item, artifact, or evidence references, not mutable scratch notes.
+
+## Communication Discipline
+
+- Ask one clear question or request per message.
+- Use `teamkit msg reply` when answering a specific message.
+- Do not infer reply linkage from similar subjects or timing.
+- Do not broadcast by default.
+- If no substantive reply is needed for a required message, close it with a reason.
+- Do not maintain a private copy of the whole process. Use `topic.yaml`, `messages.jsonl`, `teamkit graph next`, and `teamkit graph advance` as the shared coordination source.

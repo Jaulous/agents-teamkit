@@ -1,0 +1,207 @@
+version: 0.1
+
+team:
+  id: risk-review
+  name: 风控审核团队
+  purpose: 审核商户入驻风险，形成可复核的风险审核报告
+
+experts:
+  - id: intake
+    name: 材料初审专家
+    profile: experts/intake.md
+    references:
+      - references/review-sop.md
+
+  - id: evidence
+    name: 证据核验专家
+    profile: experts/evidence.md
+
+  - id: policy
+    name: 风控规则专家
+    profile: experts/policy.md
+    references:
+      - references/risk-rules.md
+
+  - id: decision
+    name: 审核结论专家
+    profile: experts/decision.md
+
+  - id: qa
+    name: 结论复核专家
+    profile: experts/qa.md
+    references:
+      - references/review-sop.md
+
+contexts:
+  - id: review_sop
+    name: 审核作业标准
+    path: references/review-sop.md
+    scope: team
+    summary: 团队运行时全体角色可见的标准作业说明。
+
+  - id: risk_rules
+    name: 风控规则说明
+    path: references/risk-rules.md
+    scope: agents
+    visible_to:
+      - policy
+      - decision
+      - qa
+    summary: 只分配给需要解释、汇总和复核规则依据的角色。
+
+  - id: merchant_profile
+    name: 商户基础信息
+    source: query_result
+    scope: agents
+    visible_to:
+      - evidence
+      - decision
+      - qa
+    summary: 运行时由业务查询 Skill 或 API 获取，并通过 context add 写入为 Context Item。
+
+  - id: blacklist_hit
+    name: 黑名单命中
+    source: query_result
+    scope: agents
+    visible_to:
+      - evidence
+      - policy
+      - decision
+      - qa
+    summary: 运行时由业务查询 Skill 或 API 获取，并通过 context add 写入为 Context Item。
+
+  - id: recent_transaction_summary
+    name: 近 30 天交易摘要
+    source: query_result
+    scope: agents
+    visible_to:
+      - evidence
+      - policy
+      - decision
+      - qa
+    summary: 运行时由业务查询 Skill 或 API 获取，并通过 context add 写入为 Context Item。
+
+  - id: review_history
+    name: 历史审核记录
+    source: query_result
+    scope: agents
+    visible_to:
+      - policy
+      - decision
+      - qa
+    summary: 运行时由业务查询 Skill 或 API 获取，并通过 context add 写入为 Context Item。
+
+materials:
+  required:
+    - 入驻申请表
+    - 营业执照
+    - 法人身份证明
+  optional:
+    - 补充说明材料
+    - 交易流水文件
+
+process:
+  mode: graph
+  coordinator: decision
+  communication:
+    allow_expert_requests: true
+    default_response: required
+    allowed_message_types:
+      - request
+      - reply
+      - notify
+      - handoff
+      - escalation
+    rules:
+      - from: intake
+        to: evidence
+        when: 需要核验材料与业务系统数据是否一致
+        response: required
+      - from: evidence
+        to: policy
+        when: 发现黑名单、交易异常或历史审核异常，需要判断规则适用
+        response: required
+      - from: decision
+        to: policy
+        when: 审核结论缺少明确规则依据
+        response: required
+      - from: decision
+        to: evidence
+        when: 审核结论缺少事实证据
+        response: required
+      - from: qa
+        to: decision
+        when: 最终报告存在证据缺口或人工复核条件未处理
+        response: required
+  graph:
+    entry: material_intake
+    nodes:
+      - id: material_intake
+        expert: intake
+        task: 整理用户提交材料，检查缺失项，形成材料摘要
+      - id: evidence_check
+        expert: evidence
+        task: 核验业务系统数据，与用户提交材料进行一致性检查
+      - id: policy_review
+        expert: policy
+        task: 判断案件适用的风控规则，指出规则冲突或不确定点
+      - id: decision_draft
+        expert: decision
+        task: 汇总材料、证据和规则判断，形成审核结论草稿
+      - id: qa_review
+        expert: qa
+        task: 检查结论是否有证据支撑，确认是否需要人工复核
+    edges:
+      - from: material_intake
+        to: evidence_check
+        when: 材料初审完成，需要核验业务系统数据
+      - from: evidence_check
+        to: policy_review
+        when: 发现黑名单、交易异常或历史审核异常，需要规则判断
+      - from: evidence_check
+        to: decision_draft
+        when: 证据核验未发现规则异常，可以进入结论草稿
+      - from: policy_review
+        to: decision_draft
+        when: 规则判断完成，可以汇总结论
+      - from: decision_draft
+        to: qa_review
+        when: 审核结论草稿完成，需要复核
+      - from: qa_review
+        to: decision_draft
+        when: 复核发现证据缺口或报告问题，需要修改草稿
+        max_visits: 2
+
+workspace:
+  run_root: runs/{run_id}
+  final_report: runs/{run_id}/final-report.md
+  message_log: runs/{run_id}/messages.jsonl
+  event_log: runs/{run_id}/events.jsonl
+  context_items_log: runs/{run_id}/context-items.jsonl
+  context_item_dir: runs/{run_id}/contexts
+  human_review_log: runs/{run_id}/human-review.jsonl
+  decision_log: runs/{run_id}/decision-log.md
+  state: runs/{run_id}/state.yaml
+  topic: runs/{run_id}/topic.yaml
+  expert_workspace_dir: runs/{run_id}/experts
+  expert_result_dir: runs/{run_id}/artifacts/expert-results
+
+human_review:
+  required_when:
+    - 证据不足
+    - 业务系统数据与上传材料冲突
+    - 风控规则冲突
+    - 结论为高风险拒绝
+    - 涉及人工例外放行
+
+output:
+  name: 风控审核报告
+  format: markdown
+  sections:
+    - 审核结论
+    - 风险等级
+    - 材料完整性
+    - 关键证据
+    - 适用规则
+    - 不确定点
+    - 人工复核建议

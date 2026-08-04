@@ -1,0 +1,12 @@
+.DS_Store
+.codex-tmp/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+build/
+dist/
+*.egg-info/
+examples/*/build/
+examples/*/runs/*
+!examples/*/runs/.gitkeep
