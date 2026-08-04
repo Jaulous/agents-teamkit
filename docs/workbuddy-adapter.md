@@ -14,7 +14,7 @@ Both use bundled TeamKit command wrappers to keep Graph, Topic, Context Items, M
 For end users who only want to install `Agents TeamKit 工作台` into their own WorkBuddy:
 
 ```sh
-/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.1.1/scripts/install-workbuddy.sh)"
+/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.1.2/scripts/install-workbuddy.sh)"
 ```
 
 The installer downloads this repository, creates `~/.teamkit/venv`, installs TeamKit Python dependencies there, exports `Agents TeamKit 工作台`, and registers the package in WorkBuddy's user expert marketplace.

@@ -2819,7 +2819,7 @@ def export_workbuddy_package(ctx: TeamContext, out_root: Path, package_name: str
     ]
     plugin = {
         "name": package_name,
-        "version": "0.1.1",
+        "version": "0.1.2",
         "description": workbuddy_team_description(ctx),
         "author": {"name": "Agents TeamKit", "email": "teamkit@example.local"},
         "agents": agents,
@@ -2956,7 +2956,7 @@ def export_workbuddy_init_package(
 
     plugin = {
         "name": package_name,
-        "version": "0.1.1",
+        "version": "0.1.2",
         "description": "Agents TeamKit workbench package for creating, managing, validating, exporting, and improving multi-agent teams for WorkBuddy trial use.",
         "author": {"name": "Agents TeamKit", "email": "teamkit@example.local"},
         "agents": [f"./agents/{agent_id}.md"],
@@ -2972,7 +2972,7 @@ def export_workbuddy_init_package(
         "profession": {"en": "Agents TeamKit Workbench", "zh": "Agents TeamKit 工作台"},
         "displayDescription": {
             "en": "Create, manage context visibility, validate, export, and improve Agents TeamKit multi-agent teams for WorkBuddy trial use.",
-            "zh": "帮助业务用户创建团队、管理上下文可见性、校验、导出并持续优化 Agents TeamKit 多 Agent 团队",
+            "zh": "创建团队、分配上下文、校验导出并优化 Agents TeamKit 多 Agent 团队",
         },
         "avatar": "avatars/team.png",
         "categoryId": "04-DataAI",
