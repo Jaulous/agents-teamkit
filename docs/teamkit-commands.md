@@ -491,7 +491,7 @@ teamkit workbuddy detect --json
 
 ### `teamkit workbuddy export-init`
 
-Export the TeamKit 工作台 WorkBuddy entry package.
+Export the Agents TeamKit 工作台 WorkBuddy entry package.
 
 ```sh
 teamkit workbuddy export-init \
@@ -501,7 +501,7 @@ teamkit workbuddy export-init \
 
 Responsibilities:
 
-- generate an installable `TeamKit 工作台` WorkBuddy package
+- generate an installable `Agents TeamKit 工作台` WorkBuddy package
 - bundle `agent-team-builder`, `agent-prompt-optimizer`, and a generic TeamKit command wrapper
 - include TeamKit docs, schema, and vendored CLI for self-contained team creation and validation
 
@@ -546,7 +546,7 @@ Remove an installed WorkBuddy package from the user expert marketplace.
 
 ```sh
 teamkit workbuddy uninstall \
-  --package teamkit-workbench \
+  --package agents-teamkit-workbench \
   --force
 ```
 

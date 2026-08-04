@@ -1,12 +1,12 @@
-# Agent TeamKit
+# Agents TeamKit
 
-This directory contains the first architecture baseline for a lightweight, platform-independent TeamKit that helps business users design and run multi-agent teams without learning agent engineering.
+This repository contains Agents TeamKit, a lightweight, platform-independent kit that helps business users design and run multi-agent teams without learning agent engineering.
 
 WorkBuddy is the first adapter and installation target. It must not define the TeamKit user model or core coordination model.
 
 ## Product Position
 
-Agent TeamKit lets a business user define:
+Agents TeamKit lets a business user define:
 
 - a team of business experts
 - each expert's responsibility boundary
@@ -63,23 +63,23 @@ The first version is file-based and platform independent. WorkBuddy-native execu
 
 ## WorkBuddy Trial
 
-For a user who only wants to install TeamKit 工作台 into WorkBuddy:
+For a user who only wants to install Agents TeamKit 工作台 into WorkBuddy:
 
 ```sh
-/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/workbuddy-agent-team-kit@v0.1.0/scripts/install-workbuddy-teamkit.sh)"
+/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.1.1/scripts/install-workbuddy.sh)"
 ```
 
-This creates a managed Python runtime under `~/.teamkit/venv`, exports the TeamKit 工作台 package, and registers it in the user's WorkBuddy expert marketplace.
+This creates a managed Python runtime under `~/.teamkit/venv`, exports the Agents TeamKit 工作台 package, and registers it in the user's WorkBuddy expert marketplace.
 
-Install the TeamKit 工作台 entry package first:
+Install the Agents TeamKit 工作台 entry package first:
 
 ```sh
 bin/teamkit workbuddy detect --json
 bin/teamkit workbuddy export-init --out build/workbuddy --force
-bin/teamkit workbuddy install --package build/workbuddy/teamkit-workbench --force
+bin/teamkit workbuddy install --package build/workbuddy/agents-teamkit-workbench --force
 ```
 
-Then open WorkBuddy and look for `TeamKit 工作台`. Use it to create teams, manage Context Item visibility, validate, export, and improve user-owned teams.
+Then open WorkBuddy and look for `Agents TeamKit 工作台`. Use it to create teams, manage Context Item visibility, validate, export, and improve user-owned teams.
 
 You can also export and install the example risk review team as a WorkBuddy Team expert package:
 
@@ -98,7 +98,7 @@ The first implementation should prove this loop:
 2. A user can edit the same files directly or through a page.
 3. Agents use `teamkit` commands for messages, artifacts, and results instead of hand-editing ledgers.
 4. Team Compiler creates a platform-independent execution plan.
-5. WorkBuddy Adapter exports the TeamKit 工作台 package as the WorkBuddy Skill carrier and entry point.
+5. WorkBuddy Adapter exports the Agents TeamKit 工作台 package as the WorkBuddy Skill carrier and entry point.
 6. WorkBuddy Adapter exports user-defined teams into WorkBuddy Team packages and later maps command effects into WorkBuddy-native execution.
 7. A run workspace records Topic state, managed context, messages, artifacts, human input, and final output.
 8. Prompt Optimizer Skill improves expert profiles after real runs.

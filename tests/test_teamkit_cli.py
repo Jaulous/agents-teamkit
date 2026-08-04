@@ -628,12 +628,12 @@ class TeamKitCliTest(unittest.TestCase):
         )
         payload = json.loads(result.stdout)
         package_dir = Path(payload["packageDir"])
-        self.assertEqual(payload["packageName"], "teamkit-workbench")
+        self.assertEqual(payload["packageName"], "agents-teamkit-workbench")
         self.assertTrue((package_dir / ".codebuddy-plugin" / "plugin.json").exists())
         self.assertTrue((package_dir / "settings.json").exists())
         self.assertTrue((package_dir / "skills" / "agent-team-builder" / "SKILL.md").exists())
         self.assertTrue((package_dir / "skills" / "agent-prompt-optimizer" / "SKILL.md").exists())
-        wrapper_path = package_dir / "skills" / "teamkit-workbench-runtime" / "scripts" / "teamkit.py"
+        wrapper_path = package_dir / "skills" / "agents-teamkit-workbench-runtime" / "scripts" / "teamkit.py"
         self.assertTrue(wrapper_path.exists())
         self.assertIn(".teamkit", wrapper_path.read_text(encoding="utf-8"))
         self.assertTrue((package_dir / "docs" / "coordination-model.md").exists())
@@ -642,7 +642,7 @@ class TeamKitCliTest(unittest.TestCase):
 
         plugin = json.loads((package_dir / ".codebuddy-plugin" / "plugin.json").read_text(encoding="utf-8"))
         self.assertEqual(plugin["expertType"], "team")
-        self.assertEqual(plugin["displayName"]["zh"], "TeamKit 工作台")
+        self.assertEqual(plugin["displayName"]["zh"], "Agents TeamKit 工作台")
         self.assertEqual(plugin["profession"], plugin["displayName"])
         self.assertEqual(plugin["teamInfo"]["leadAgent"], plugin["agentName"])
         self.assertEqual(plugin["teamInfo"]["memberAgents"], [])
@@ -661,12 +661,12 @@ class TeamKitCliTest(unittest.TestCase):
         install_payload = json.loads(install_result.stdout)
         installed_dir = Path(install_payload["installedDir"])
         marketplace = json.loads(Path(install_payload["marketplacePath"]).read_text(encoding="utf-8"))
-        self.assertTrue(any(item["name"] == "teamkit-workbench" for item in marketplace["plugins"]))
+        self.assertTrue(any(item["name"] == "agents-teamkit-workbench" for item in marketplace["plugins"]))
 
         wrapper_result = subprocess.run(
             [
                 sys.executable,
-                str(package_dir / "skills" / "teamkit-workbench-runtime" / "scripts" / "teamkit.py"),
+                str(package_dir / "skills" / "agents-teamkit-workbench-runtime" / "scripts" / "teamkit.py"),
                 "--team",
                 "team.yaml",
                 "team",
@@ -684,7 +684,7 @@ class TeamKitCliTest(unittest.TestCase):
             "workbuddy",
             "uninstall",
             "--package",
-            "teamkit-workbench",
+            "agents-teamkit-workbench",
             "--config-dir",
             "fake-workbuddy",
             "--force",

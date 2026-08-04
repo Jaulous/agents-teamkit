@@ -148,7 +148,7 @@ Start with files, commands, and skills, then add a page:
 4. Implement Team Builder Skill.
 5. Implement Prompt Optimizer Skill.
 6. Compile a platform-independent execution plan.
-7. Export and install the TeamKit 工作台 WorkBuddy entry package.
+7. Export and install the Agents TeamKit 工作台 WorkBuddy entry package.
 8. Export and install user-defined WorkBuddy Team expert packages through the package-level Adapter.
 9. Build deeper adapter-native messaging/task sync only after target platform APIs are confirmed.
 10. Add Team Studio once the file and command protocol stabilizes.

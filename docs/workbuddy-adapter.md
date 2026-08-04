@@ -4,27 +4,27 @@ The first WorkBuddy Adapter is a package-level adapter.
 
 It does not replace WorkBuddy native messaging. It packages two things:
 
-- `TeamKit 工作台`: the WorkBuddy Skill carrier for creating, managing, validating, exporting, and improving user-owned teams.
+- `Agents TeamKit 工作台`: the WorkBuddy Skill carrier for creating, managing, validating, exporting, and improving user-owned teams.
 - Generated Team packages: WorkBuddy Team expert packages compiled from a TeamKit `team.yaml`.
 
 Both use bundled TeamKit command wrappers to keep Graph, Topic, Context Items, Message, human input, artifacts, and final result state deterministic.
 
 ## One-Command Install
 
-For end users who only want to install `TeamKit 工作台` into their own WorkBuddy:
+For end users who only want to install `Agents TeamKit 工作台` into their own WorkBuddy:
 
 ```sh
-/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/workbuddy-agent-team-kit@v0.1.0/scripts/install-workbuddy-teamkit.sh)"
+/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.1.1/scripts/install-workbuddy.sh)"
 ```
 
-The installer downloads this repository, creates `~/.teamkit/venv`, installs TeamKit Python dependencies there, exports `TeamKit 工作台`, and registers the package in WorkBuddy's user expert marketplace.
+The installer downloads this repository, creates `~/.teamkit/venv`, installs TeamKit Python dependencies there, exports `Agents TeamKit 工作台`, and registers the package in WorkBuddy's user expert marketplace.
 
 Advanced options:
 
 ```sh
-TEAMKIT_REF=main /bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/workbuddy-agent-team-kit@main/scripts/install-workbuddy-teamkit.sh)"
-TEAMKIT_WORKBUDDY_CONFIG_DIR=/path/to/.workbuddy /bin/bash scripts/install-workbuddy-teamkit.sh
-TEAMKIT_SOURCE_DIR=/path/to/workbuddy-agent-team-kit /bin/bash scripts/install-workbuddy-teamkit.sh
+TEAMKIT_REF=main /bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@main/scripts/install-workbuddy.sh)"
+TEAMKIT_WORKBUDDY_CONFIG_DIR=/path/to/.workbuddy /bin/bash scripts/install-workbuddy.sh
+TEAMKIT_SOURCE_DIR=/path/to/agents-teamkit /bin/bash scripts/install-workbuddy.sh
 ```
 
 ## Local Detection
@@ -43,7 +43,7 @@ This reports:
 
 On this machine, WorkBuddy was detected at `/Applications/WorkBuddy.app` with `workbuddy://` deep links and the bundled `codebuddy` CLI.
 
-## Export TeamKit 工作台
+## Export Agents TeamKit 工作台
 
 ```sh
 bin/teamkit workbuddy export-init \
@@ -54,12 +54,12 @@ bin/teamkit workbuddy export-init \
 This creates the WorkBuddy entry package:
 
 ```text
-build/workbuddy/teamkit-workbench/
+build/workbuddy/agents-teamkit-workbench/
   .codebuddy-plugin/plugin.json
   agents/
   skills/agent-team-builder/
   skills/agent-prompt-optimizer/
-  skills/teamkit-workbench-runtime/
+  skills/agents-teamkit-workbench-runtime/
   docs/
   schemas/
   vendor/teamkit/
@@ -69,11 +69,11 @@ Install it with:
 
 ```sh
 bin/teamkit workbuddy install \
-  --package build/workbuddy/teamkit-workbench \
+  --package build/workbuddy/agents-teamkit-workbench \
   --force
 ```
 
-In WorkBuddy, open `TeamKit 工作台` and start with:
+In WorkBuddy, open `Agents TeamKit 工作台` and start with:
 
 ```text
 帮我创建一个新的多 Agent 团队。
@@ -171,7 +171,7 @@ python3 scripts/teamkit.py graph next --run task-001
 Implemented now:
 
 - WorkBuddy app detection
-- TeamKit 工作台 export and installation
+- Agents TeamKit 工作台 export and installation
 - TeamKit team export to WorkBuddy Team package
 - local WorkBuddy expert installation and marketplace registration
 - bundled TeamKit command wrapper for deterministic run state

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TEAMKIT_REPO="${TEAMKIT_REPO:-Jaulous/workbuddy-agent-team-kit}"
-TEAMKIT_REF="${TEAMKIT_REF:-v0.1.0}"
+TEAMKIT_REPO="${TEAMKIT_REPO:-Jaulous/agents-teamkit}"
+TEAMKIT_REF="${TEAMKIT_REF:-v0.1.1}"
 TEAMKIT_HOME="${TEAMKIT_HOME:-$HOME/.teamkit}"
 TEAMKIT_PYTHON_BIN="${TEAMKIT_PYTHON_BIN:-python3}"
-TEAMKIT_PACKAGE_NAME="${TEAMKIT_PACKAGE_NAME:-teamkit-workbench}"
+TEAMKIT_PACKAGE_NAME="${TEAMKIT_PACKAGE_NAME:-agents-teamkit-workbench}"
 TEAMKIT_SOURCE_DIR="${TEAMKIT_SOURCE_DIR:-}"
 TEAMKIT_WORKBUDDY_CONFIG_DIR="${TEAMKIT_WORKBUDDY_CONFIG_DIR:-${WORKBUDDY_CONFIG_DIR:-}}"
 
@@ -94,7 +94,7 @@ pip_install install "PyYAML>=6.0" >/dev/null
 "$venv_python" -c "import yaml" || fail "PyYAML is not available in $TEAMKIT_HOME/venv"
 
 build_root="$TEAMKIT_HOME/build/workbuddy"
-log "Exporting TeamKit Workbench package..."
+log "Exporting Agents TeamKit Workbench package..."
 "$venv_python" "$source_dir/bin/teamkit" workbuddy export-init \
   --out "$build_root" \
   --name "$TEAMKIT_PACKAGE_NAME" \
@@ -114,12 +114,12 @@ if [ -n "$TEAMKIT_WORKBUDDY_CONFIG_DIR" ]; then
   install_args+=("--config-dir" "$TEAMKIT_WORKBUDDY_CONFIG_DIR")
 fi
 
-log "Installing TeamKit Workbench into WorkBuddy..."
+log "Installing Agents TeamKit Workbench into WorkBuddy..."
 install_output="$("${install_args[@]}")"
 log "$install_output"
 
 log ""
-log "TeamKit Workbench installed."
-log "Open WorkBuddy and look for: TeamKit 工作台"
+log "Agents TeamKit Workbench installed."
+log "Open WorkBuddy and look for: Agents TeamKit 工作台"
 log ""
 log "Update later with the same command. Override source with TEAMKIT_REPO, TEAMKIT_REF, or TEAMKIT_SOURCE_DIR when needed."

@@ -36,7 +36,7 @@ This file keeps the first implementation honest: what is already implemented, wh
 ### WorkBuddy Adapter
 
 - detects local WorkBuddy desktop app and bundled `codebuddy` CLI
-- exports a `TeamKit 工作台` WorkBuddy entry package with builder, context management, and optimizer skills
+- exports an `Agents TeamKit 工作台` WorkBuddy entry package with builder, context management, and optimizer skills
 - exports `team.yaml` into a WorkBuddy Team expert package
 - vendors TeamKit runtime into the generated package
 - installs and registers packages in WorkBuddy's user expert marketplace
@@ -61,7 +61,7 @@ This file keeps the first implementation honest: what is already implemented, wh
 - standard-library `unittest` coverage for the end-to-end local run loop
 - validation for communication route rejection
 - source-tree `bin/teamkit` entrypoint smoke test
-- WorkBuddy package export tests for both TeamKit 工作台 and generated team packages
+- WorkBuddy package export tests for both Agents TeamKit 工作台 and generated team packages
 
 ## Deferred To WorkBuddy Adapter
 

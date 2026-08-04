@@ -2355,8 +2355,8 @@ def workbuddy_team_description(ctx: TeamContext) -> str:
     team = ctx.team.get("team", {}) or {}
     purpose = str(team.get("purpose") or "")
     if purpose:
-        return f"WorkBuddy TeamKit team for {purpose}"
-    return "WorkBuddy TeamKit team for repeatable multi-agent business tasks"
+        return f"WorkBuddy package for an Agents TeamKit team: {purpose}"
+    return "WorkBuddy package for an Agents TeamKit team that handles repeatable multi-agent business tasks"
 
 
 def workbuddy_display_description_zh() -> str:
@@ -2366,7 +2366,7 @@ def workbuddy_display_description_zh() -> str:
 def workbuddy_display_description_en(ctx: TeamContext) -> str:
     team = ctx.team.get("team", {}) or {}
     name = str(team.get("name") or team.get("id") or "business team")
-    return f"Runs {name} with TeamKit graph, topic, message, context, artifact, and final result commands."
+    return f"Runs {name} with Agents TeamKit graph, topic, message, context, artifact, and final result commands."
 
 
 def workbuddy_runtime_skill_text(package_name: str) -> str:
@@ -2611,13 +2611,13 @@ def workbuddy_member_markdown(ctx: TeamContext, package_name: str, expert_id: st
 
 def workbuddy_init_runtime_skill_text() -> str:
     return """---
-name: teamkit-workbench-runtime
-description: Run TeamKit commands from the TeamKit 工作台 package. Use this to validate team definitions, manage team Context visibility, compile execution plans, export user-created teams as WorkBuddy packages, and install generated packages.
+name: agents-teamkit-workbench-runtime
+description: Run TeamKit commands from the Agents TeamKit 工作台 package. Use this to validate team definitions, manage team Context visibility, compile execution plans, export user-created teams as WorkBuddy packages, and install generated packages.
 agent_created: true
 allowed-tools: Read,Bash
 ---
 
-# TeamKit Workbench Runtime
+# Agents TeamKit Workbench Runtime
 
 Use this skill when the user wants to validate, compile, export, or install a TeamKit team they are creating in WorkBuddy.
 
@@ -2651,18 +2651,18 @@ def workbuddy_init_agent_markdown(package_name: str, agent_id: str) -> str:
     return (
         workbuddy_agent_frontmatter(
             agent_id,
-            "TeamKit 工作台",
-            "TeamKit Workbench",
-            "TeamKit 团队工作台",
-            "TeamKit Team Workbench",
-            "Helps business users create, manage, validate, export, and improve TeamKit multi-agent teams for WorkBuddy trial use.",
+            "Agents TeamKit 工作台",
+            "Agents TeamKit Workbench",
+            "Agents TeamKit 团队工作台",
+            "Agents TeamKit Team Workbench",
+            "Helps business users create, manage, validate, export, and improve Agents TeamKit multi-agent teams for WorkBuddy trial use.",
             180,
-            ["agent-team-builder", "agent-prompt-optimizer", "teamkit-workbench-runtime"],
+            ["agent-team-builder", "agent-prompt-optimizer", "agents-teamkit-workbench-runtime"],
         )
         + f"""
-# TeamKit 工作台
+# Agents TeamKit 工作台
 
-你是 WorkBuddy 里的 TeamKit 工作台，负责帮助业务用户设计、创建、管理、校验、导出和迭代他们自己的 TeamKit 多 Agent 团队。
+你是 WorkBuddy 里的 Agents TeamKit 工作台，负责帮助业务用户设计、创建、管理、校验、导出和迭代他们自己的 TeamKit 多 Agent 团队。
 
 ## 你要坚持的产品模型
 
@@ -2675,8 +2675,8 @@ def workbuddy_init_agent_markdown(package_name: str, agent_id: str) -> str:
 
 1. 使用 `agent-team-builder` 引导用户定义团队、角色、流程、Context Item 可见范围和输出。
 2. 将团队保存为用户可编辑的 `team.yaml`、`experts/*.md`、`references/*` 或 `contexts/*`。
-3. 当用户上传资料、指定专家可见范围或要求你推荐资料分配时，使用 `agent-team-builder` 的上下文管理流程，并通过 `teamkit-workbench-runtime` 里的 `team context` 命令修改 `team.yaml`。
-4. 使用 `teamkit-workbench-runtime` 校验和编译团队定义。
+3. 当用户上传资料、指定专家可见范围或要求你推荐资料分配时，使用 `agent-team-builder` 的上下文管理流程，并通过 `agents-teamkit-workbench-runtime` 里的 `team context` 命令修改 `team.yaml`。
+4. 使用 `agents-teamkit-workbench-runtime` 校验和编译团队定义。
 5. 用户准备试用时，将该团队导出为 WorkBuddy Team 包并安装。
 6. 用户跑过真实任务后，使用 `agent-prompt-optimizer` 优化具体 Agent 定义。
 
@@ -2819,9 +2819,9 @@ def export_workbuddy_package(ctx: TeamContext, out_root: Path, package_name: str
     ]
     plugin = {
         "name": package_name,
-        "version": "0.1.0",
+        "version": "0.1.1",
         "description": workbuddy_team_description(ctx),
-        "author": {"name": "TeamKit", "email": "teamkit@example.local"},
+        "author": {"name": "Agents TeamKit", "email": "teamkit@example.local"},
         "agents": agents,
         "skills": ["./skills/teamkit-runtime"],
         "expertType": "team",
@@ -2890,7 +2890,7 @@ def export_workbuddy_package(ctx: TeamContext, out_root: Path, package_name: str
     (package_dir / "README.md").write_text(
         f"""# {team_name}
 
-This is a WorkBuddy Team expert package generated from TeamKit.
+This is a WorkBuddy Team expert package generated from Agents TeamKit.
 
 ## Try It
 
@@ -2903,10 +2903,10 @@ Ask the team to initialize a task run, then use Topic, Graph, Context, Message, 
 
 def export_workbuddy_init_package(
     out_root: Path,
-    package_name: str = "teamkit-workbench",
+    package_name: str = "agents-teamkit-workbench",
     force: bool = False,
 ) -> Path:
-    package_name = kebab_case(package_name, "teamkit-workbench")
+    package_name = kebab_case(package_name, "agents-teamkit-workbench")
     package_dir = out_root.expanduser().resolve() / package_name
     if package_dir.exists():
         if not force:
@@ -2915,7 +2915,7 @@ def export_workbuddy_init_package(
     package_dir.mkdir(parents=True)
 
     repo_root = Path(__file__).resolve().parent.parent
-    agent_id = kebab_case(f"{package_name}-lead", "teamkit-workbench-lead")
+    agent_id = kebab_case(f"{package_name}-lead", "agents-teamkit-workbench-lead")
     agents_dir = package_dir / "agents"
     agents_dir.mkdir()
     (agents_dir / f"{agent_id}.md").write_text(
@@ -2934,7 +2934,7 @@ def export_workbuddy_init_package(
         skills_dir / "agent-prompt-optimizer",
         "Read,Write,Edit,Bash",
     )
-    runtime_dir = skills_dir / "teamkit-workbench-runtime"
+    runtime_dir = skills_dir / "agents-teamkit-workbench-runtime"
     (runtime_dir / "scripts").mkdir(parents=True)
     (runtime_dir / "SKILL.md").write_text(workbuddy_init_runtime_skill_text(), encoding="utf-8")
     wrapper = runtime_dir / "scripts" / "teamkit.py"
@@ -2956,23 +2956,23 @@ def export_workbuddy_init_package(
 
     plugin = {
         "name": package_name,
-        "version": "0.1.0",
-        "description": "TeamKit workbench package for creating, managing, validating, exporting, and improving multi-agent teams for WorkBuddy trial use.",
-        "author": {"name": "TeamKit", "email": "teamkit@example.local"},
+        "version": "0.1.1",
+        "description": "Agents TeamKit workbench package for creating, managing, validating, exporting, and improving multi-agent teams for WorkBuddy trial use.",
+        "author": {"name": "Agents TeamKit", "email": "teamkit@example.local"},
         "agents": [f"./agents/{agent_id}.md"],
         "skills": [
             "./skills/agent-team-builder",
             "./skills/agent-prompt-optimizer",
-            "./skills/teamkit-workbench-runtime",
+            "./skills/agents-teamkit-workbench-runtime",
         ],
         "expertType": "team",
         "agentName": agent_id,
         "teamInfo": {"leadAgent": agent_id, "memberAgents": []},
-        "displayName": {"en": "TeamKit Workbench", "zh": "TeamKit 工作台"},
-        "profession": {"en": "TeamKit Workbench", "zh": "TeamKit 工作台"},
+        "displayName": {"en": "Agents TeamKit Workbench", "zh": "Agents TeamKit 工作台"},
+        "profession": {"en": "Agents TeamKit Workbench", "zh": "Agents TeamKit 工作台"},
         "displayDescription": {
-            "en": "Create, manage context visibility, validate, export, and improve TeamKit multi-agent teams for WorkBuddy trial use.",
-            "zh": "帮助业务用户创建团队、管理上下文可见性、校验、导出并持续优化 TeamKit 多 Agent 团队",
+            "en": "Create, manage context visibility, validate, export, and improve Agents TeamKit multi-agent teams for WorkBuddy trial use.",
+            "zh": "帮助业务用户创建团队、管理上下文可见性、校验、导出并持续优化 Agents TeamKit 多 Agent 团队",
         },
         "avatar": "avatars/team.png",
         "categoryId": "04-DataAI",
@@ -2982,7 +2982,7 @@ def export_workbuddy_init_package(
         },
         "plugin": package_name,
         "tags": [
-            {"en": "TeamKit", "zh": "TeamKit"},
+            {"en": "Agents TeamKit", "zh": "Agents TeamKit"},
             {"en": "Team Builder", "zh": "团队创建"},
             {"en": "Prompt Optimizer", "zh": "提示词优化"},
         ],
@@ -3003,8 +3003,8 @@ def export_workbuddy_init_package(
         "members": [
             {
                 "id": agent_id,
-                "displayName": {"en": "TeamKit Workbench", "zh": "TeamKit 工作台"},
-                "profession": {"en": "TeamKit Team Workbench", "zh": "TeamKit 团队工作台"},
+                "displayName": {"en": "Agents TeamKit Workbench", "zh": "Agents TeamKit 工作台"},
+                "profession": {"en": "Agents TeamKit Team Workbench", "zh": "Agents TeamKit 团队工作台"},
                 "avatar": f"avatars/{agent_id}.png",
                 "role": "lead",
             }
@@ -3012,9 +3012,9 @@ def export_workbuddy_init_package(
     }
     write_json(package_dir / ".codebuddy-plugin" / "plugin.json", plugin)
     (package_dir / "README.md").write_text(
-        """# TeamKit 工作台
+        """# Agents TeamKit 工作台
 
-This is the WorkBuddy Skill carrier for TeamKit team creation and management.
+This is the WorkBuddy Skill carrier for Agents TeamKit team creation and management.
 
 Use it to create or update a user-owned multi-agent team, manage Context Item visibility, validate the generated `team.yaml`, export that team as a WorkBuddy Team package, and improve agent profiles after real runs.
 """,
@@ -3039,7 +3039,7 @@ def cmd_workbuddy_export_init(args: argparse.Namespace) -> int:
     out_root = Path(args.out or "build/workbuddy")
     package_dir = export_workbuddy_init_package(
         out_root,
-        args.name or "teamkit-workbench",
+        args.name or "agents-teamkit-workbench",
         args.force,
     )
     if args.json:
