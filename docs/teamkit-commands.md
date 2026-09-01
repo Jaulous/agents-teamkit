@@ -180,6 +180,31 @@ Responsibilities:
 - read `state.yaml`
 - summarize active graph node, open messages, open human input, managed context, artifacts, and final output status
 
+### `teamkit run close`
+
+Close a task run explicitly when the business process considers its work complete.
+Closing does not require a final file, open-message check, human-review check, or
+graph-completion check.
+
+```sh
+teamkit run close \
+  --team team.yaml \
+  --run run-001 \
+  --by decision \
+  --summary "业务处理已完成"
+```
+
+Responsibilities:
+
+- set `state.yaml` status to `completed`
+- mark the Topic as `resolved` when one exists and clear its waiting condition
+- record an optional summary only when supplied by the caller
+- append a `run.closed` event
+
+Repeated close attempts fail with the mechanical error `run already closed`.
+The command does not inspect messages, human input, graph branches, or artifacts.
+Other command writes remain mechanically available after close.
+
 ### `teamkit topic status`
 
 Read the lightweight coordination Topic for a run.
@@ -221,22 +246,39 @@ teamkit topic link --team team.yaml --run run-001 --ref art_001 --label "事实�
 
 ### `teamkit graph next`
 
-Show allowed next actions from the current Topic node.
+Show allowed next actions from the current Topic node or nodes. In a
+parallel run, the JSON result includes an `activeNodes` array with one view per
+active or waiting node. `currentNode` remains the first active node for
+backward-compatible readers; use `activeNodes` to inspect the complete state.
 
 ```sh
 teamkit graph next --team team.yaml --run run-001
 ```
 
+Useful selectors:
+
+```sh
+teamkit graph next --team team.yaml --run run-001 --from-node fact_check
+teamkit graph next --team team.yaml --run run-001 --ignore-waiting
+```
+
+`--from-node` asks for the transitions from one named node instead of every
+active node. `--ignore-waiting` only bypasses unresolved required-message or
+Topic-level waiting checks; a node that is waiting for parallel predecessors
+remains blocked.
+
 Responsibilities:
 
 - read `process.graph`
 - read `topic.yaml`
-- block next actions if the current node has unresolved required messages
-- return allowed outgoing graph edges and target experts
+- return each active node's allowed outgoing graph edges and target experts
+- report waiting nodes with reason `node is waiting for parallel predecessors`
+- block next actions if a node has unresolved required messages or the Topic is waiting
 
 ### `teamkit graph advance`
 
-Move the current Topic along one allowed graph edge.
+Move one active graph node along an allowed edge. When a run has multiple
+active nodes, `--node` is required to identify the source node.
 
 ```sh
 teamkit graph advance \
@@ -246,11 +288,37 @@ teamkit graph advance \
   --by decision
 ```
 
+For explicit edge selection, use exactly one of `--edge` or `--to`:
+
+```sh
+teamkit graph advance --team team.yaml --run run-001 --node fact_check --edge edge_2
+teamkit graph advance --team team.yaml --run run-001 --node fact_check --to rule_check
+```
+
+`--to` must identify one outgoing edge; if several edges target the same node,
+use `--edge`. A `relation: parallel` edge cannot be selected by itself. When a
+source has a parallel fork, omit `--edge`/`--to` and TeamKit activates all
+allowed parallel branches together. Choice edges remain selectable one at a
+time; a source that mixes parallel and choice edges must select a non-parallel
+choice explicitly.
+
+When a branch enters a parallel join target, the target is recorded as
+`waiting` until all of its parallel predecessors have completed. `graph next`
+then reports the waiting reason above; after the final predecessor completes,
+the join becomes active and can be advanced normally.
+
+With `--json`, the successful response includes the updated `activeNodes`
+views, so callers can see which branches remain active and whether the join is
+still waiting.
+
 Responsibilities:
 
 - read the current Topic node
+- require `--node` when more than one graph node is active
 - validate the selected edge is available and has not exceeded `max_visits`
-- refuse to advance while the current node has unresolved required messages
+- reject using `--edge` and `--to` together, and reject selecting one parallel edge from a fork
+- activate all allowed parallel branches for an implicit fork
+- refuse to advance while the source node has unresolved required messages or is waiting
 - update `topic.yaml` and `state.yaml`
 - append event to `events.jsonl`
 
@@ -457,25 +525,29 @@ Responsibilities:
 
 ### `teamkit result publish`
 
-Publish the final run result.
+Archive a final run result when one exists. This command does not close the run.
 
 ```sh
 teamkit result publish \
   --team team.yaml \
   --run run-001 \
   --from decision \
-  --file final-report.md
+  --file experts/decision/result.md
 ```
 
 Responsibilities:
 
 - validate the publishing expert exists in `team.yaml`
-- refuse to publish while required messages or human input requests are still open, unless forced
-- snapshot the final report
-- update `state.yaml`
-- mark `topic.yaml` as resolved
-- append event
-- return final artifact reference
+- validate that the input file exists
+- store the file by content hash under `artifacts/final/<hash>.<ext>`
+- record the archived artifact in `state.yaml.final_result`
+- append a `result.published` event
+- return the final artifact reference
+
+`result publish` is equivalent to publishing an artifact with kind `final`.
+It does not check open messages, human input, waiting Topics, or unfinished
+graph branches, and it no longer accepts `--force`. Use `teamkit run close`
+separately when the business process is complete.
 
 ## WorkBuddy Adapter Commands
 
@@ -564,7 +636,7 @@ Responsibilities:
 - `state.yaml`
 - `topic.yaml`
 - artifact index files
-- final result publish records
+- final-output archive records
 
 ## Files Agents May Edit
 

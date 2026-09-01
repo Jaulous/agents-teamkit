@@ -304,9 +304,6 @@ class TeamContext:
     def decision_log_path(self, run_id: str) -> Path:
         return self.path_for("decision_log", run_id, f"runs/{run_id}/decision-log.md")
 
-    def final_report_path(self, run_id: str) -> Path:
-        return self.path_for("final_report", run_id, f"runs/{run_id}/final-report.md")
-
     def expert_workspace_dir(self, run_id: str) -> Path:
         return self.path_for("expert_workspace_dir", run_id, f"runs/{run_id}/experts")
 
@@ -1030,7 +1027,7 @@ def validate_or_raise(ctx: TeamContext) -> None:
 
 
 WORKSPACE_KEYS = {
-    "run_root", "final_report", "message_log", "event_log", "context_items_log",
+    "run_root", "message_log", "event_log", "context_items_log",
     "context_item_dir", "human_review_log", "decision_log", "state", "topic",
     "expert_workspace_dir", "expert_result_dir",
 }
@@ -1111,6 +1108,7 @@ def build_execution_plan(ctx: TeamContext) -> dict[str, Any]:
         "workspace": ctx.team.get("workspace", {}) or {},
         "output": ctx.team.get("output", {}) or {},
         "commandContract": {
+            "run": "teamkit run init/status/close",
             "topic": "teamkit topic status/update/link",
             "teamContext": "teamkit team context add/assign/unassign/remove/list",
             "context": "teamkit context add/list",
@@ -1331,7 +1329,6 @@ def cmd_run_init(args: argparse.Namespace) -> int:
     for path in (
         run_root / "shared",
         ctx.context_item_dir(run_id),
-        run_root / "artifacts" / "final",
         ctx.expert_result_dir(run_id),
     ):
         path.mkdir(parents=True, exist_ok=True)
@@ -1523,6 +1520,34 @@ def cmd_run_status(args: argparse.Namespace) -> int:
         print(json.dumps(view, ensure_ascii=False, indent=2))
     else:
         print(yaml.safe_dump(view, allow_unicode=True, sort_keys=False).strip())
+    return 0
+
+
+def cmd_run_close(args: argparse.Namespace) -> int:
+    ctx = TeamContext(Path(args.team))
+    state = load_state(ctx, args.run)
+    if state.get("status") == "completed":
+        raise TeamKitError("run already closed")
+    summary = None
+    if args.summary is not None or args.summary_file:
+        # Resolve caller-provided text before changing either lifecycle ledger.
+        # A missing summary file must not leave a half-closed run behind.
+        summary = optional_text_from_option(args.summary, args.summary_file)
+    state["status"] = "completed"
+    save_state(ctx, args.run, state)
+    if ctx.topic_path(args.run).exists():
+        topic = load_topic(ctx, args.run)
+        topic["status"] = "resolved"
+        topic["waiting_on"] = None
+        if summary is not None:
+            topic["summary"] = summary
+        topic["version"] = int(topic.get("version") or 1) + 1
+        save_topic(ctx, args.run, topic)
+    append_jsonl(
+        ctx.events_path(args.run),
+        event("run.closed", args.run, actor=args.by or ""),
+    )
+    print(args.run)
     return 0
 
 
@@ -2534,66 +2559,21 @@ def cmd_human_list(args: argparse.Namespace) -> int:
 
 def cmd_result_publish(args: argparse.Namespace) -> int:
     ctx = TeamContext(Path(args.team))
-    state = load_state(ctx, args.run)
+    load_state(ctx, args.run)
     ctx.require_expert(args.from_expert)
-    if not args.force:
-        open_messages = open_required_messages(ctx, args.run)
-        if open_messages:
-            raise TeamKitError(
-                "cannot publish final result while required messages are open: "
-                + ", ".join(str(msg.get("id")) for msg in open_messages)
-            )
-        open_reviews = state.get("open_human_reviews")
-        if isinstance(open_reviews, list) and open_reviews:
-            raise TeamKitError(
-                "cannot publish final result while human input requests are open: "
-                + ", ".join(str(review_id) for review_id in open_reviews)
-            )
-        if ctx.topic_path(args.run).exists():
-            topic = load_topic(ctx, args.run)
-            if topic.get("status") == "waiting":
-                raise TeamKitError("cannot publish final result while topic is waiting")
-            entries = topic_active_nodes(topic)
-            if not entries:
-                raise TeamKitError("run state is invalid: no active graph nodes; inspect events.jsonl")
-            unfinished = [item for item in entries if item.get("status") in {"active", "waiting"}]
-            if len(unfinished) > 1:
-                labels = ", ".join(str(item.get("node")) for item in unfinished)
-                raise TeamKitError(f"graph still has unfinished branches ({labels}); cannot publish final result")
     source = resolve_input_file(ctx, args.file, args.run)
-    if not source.exists():
+    if not source.exists() or not source.is_file():
         raise TeamKitError(f"result file not found: {source}")
-    final_path = ctx.final_report_path(args.run)
-    final_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_copyfile(source, final_path)
-    record = publish_artifact(ctx, args.run, args.from_expert, final_path, "final")
+    record = publish_artifact(ctx, args.run, args.from_expert, source, "final")
     add_state_artifact(ctx, args.run, record)
     state = load_state(ctx, args.run)
-    state["status"] = "completed"
     state["final_result"] = {
         "artifactId": record["id"],
-        "path": display_path(ctx.root, final_path),
+        "path": record["path"],
         "publishedBy": args.from_expert,
         "publishedAt": now(),
     }
     save_state(ctx, args.run, state)
-    if ctx.topic_path(args.run).exists():
-        topic = load_topic(ctx, args.run)
-        topic["status"] = "resolved"
-        topic["waiting_on"] = None
-        topic["summary"] = topic.get("summary") or "Final result published."
-        topic["version"] = int(topic.get("version") or 1) + 1
-        save_topic(ctx, args.run, topic)
-        append_jsonl(
-            ctx.events_path(args.run),
-            event(
-                "topic.resolved",
-                args.run,
-                actor=args.from_expert,
-                topicId=topic.get("id"),
-                currentNode=topic.get("current_node"),
-            ),
-        )
     append_jsonl(
         ctx.events_path(args.run),
         event(
@@ -2895,7 +2875,7 @@ def workbuddy_display_description_en(ctx: TeamContext) -> str:
 def workbuddy_runtime_skill_text(package_name: str) -> str:
     return f"""---
 name: teamkit-runtime
-description: This skill runs TeamKit commands for a generated business agent team. Use it to initialize task runs, inspect Topic and Graph state, list or add managed Context Items, send or reply to agent messages, request human input, publish artifacts, and publish final results.
+description: This skill runs TeamKit commands for a generated business agent team. Use it to initialize or close task runs, inspect Topic and Graph state, list or add managed Context Items, send or reply to agent messages, request human input, publish artifacts, and archive final results.
 agent_created: true
 allowed-tools: Read,Bash
 ---
@@ -2916,7 +2896,7 @@ The wrapper defaults `--team` to the packaged `teamkit-workspace/team.yaml`. Use
 
 ## Common Flow
 
-The wrapper supports `team validate`, `run init`, `run status`, `topic status`, `graph next`, `graph advance`, `msg`, `context`, `human`, `artifact`, `result`, and the batch ledger commands. `run status` includes graph actions, active nodes, and next expert/task information.
+The wrapper supports `team validate`, `run init`, `run status`, `run close`, `topic status`, `graph next`, `graph advance`, `msg`, `context`, `human`, `artifact`, `result`, and the batch ledger commands. Use `run close` to close a task run. `run status` includes graph actions, active nodes, and next expert/task information.
 
 Do not edit `topic.yaml`, `messages.jsonl`, `events.jsonl`, `context-items.jsonl`, `human-review.jsonl`, `state.yaml`, or artifact index files directly.
 """
@@ -3065,7 +3045,7 @@ def workbuddy_lead_markdown(ctx: TeamContext, package_name: str, lead_id: str, m
 
 ## 协议能力
 
-可用命令包括 `team validate`、`run init/status`、`topic status/update`、`graph next/advance`、`msg`、`context`、`human`、`artifact`、`result` 以及 `batch init/next/update/status/recover`。账本文件只能由 TeamKit 命令修改；只有主理人或被明确授权者可以使用 `graph advance` 或 `topic update` 推进共享状态。
+可用命令包括 `team validate`、`run init/status/close`、`topic status/update`、`graph next/advance`、`msg`、`context`、`human`、`artifact`、`result` 以及 `batch init/next/update/status/recover`。账本文件只能由 TeamKit 命令修改；只有主理人或被明确授权者可以使用 `graph advance` 或 `topic update` 推进共享状态。
 `run status` 聚合当前 Graph actions、active nodes、next expert/task、消息、Context、artifact 和 human review 信息；`graph advance` 返回推进后的下一步信息。
 
 ## Graph Nodes
@@ -3848,6 +3828,12 @@ def build_parser() -> argparse.ArgumentParser:
     run_status.add_argument("--run", required=True)
     run_status.add_argument("--json", action="store_true")
     run_status.set_defaults(func=cmd_run_status)
+    run_close = run_sub.add_parser("close")
+    run_close.add_argument("--run", required=True)
+    run_close.add_argument("--by")
+    run_close.add_argument("--summary")
+    run_close.add_argument("--summary-file")
+    run_close.set_defaults(func=locked_run_command(cmd_run_close))
 
     topic = sub.add_parser("topic")
     topic_sub = topic.add_subparsers(dest="command", required=True)
@@ -4020,7 +4006,6 @@ def build_parser() -> argparse.ArgumentParser:
     result_publish.add_argument("--run", required=True)
     result_publish.add_argument("--from", dest="from_expert", required=True)
     result_publish.add_argument("--file", required=True)
-    result_publish.add_argument("--force", action="store_true")
     result_publish.set_defaults(func=locked_run_command(cmd_result_publish))
 
     batch = sub.add_parser("batch")

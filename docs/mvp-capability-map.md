@@ -17,6 +17,7 @@ This file keeps the first implementation honest: what is already implemented, wh
 
 - `agent-team-builder`: guides team, expert, process, Topic-based coordination, Context Item visibility, human input, and output definition
 - `agent-prompt-optimizer`: tightens expert prompts after design or run feedback
+- `agent-team-reviewer`: reviews existing team definitions for parallelism and communication issues
 
 ### Deterministic Command Layer
 
@@ -24,6 +25,7 @@ This file keeps the first implementation honest: what is already implemented, wh
 - `teamkit team compile`
 - `teamkit run init`
 - `teamkit run status`
+- `teamkit run close`
 - `teamkit topic status/update/link`
 - `teamkit graph next/advance`
 - `teamkit msg send/reply/close/list`
@@ -54,7 +56,7 @@ This file keeps the first implementation honest: what is already implemented, wh
 - human input ledger
 - decision log
 - artifact index and content-addressed snapshots
-- final report publication
+- final-output archiving and explicit run closure
 
 ### Verification
 

@@ -58,6 +58,7 @@ Agents should not directly edit communication ledgers, event ledgers, artifact i
 - `teamkit context list`
 - `teamkit graph next`
 - `teamkit graph advance`
+- `teamkit run close`
 - `teamkit human request`
 - `teamkit artifact publish`
 - `teamkit result publish`
@@ -70,6 +71,7 @@ Provides guided creation and iteration:
 
 - `agent-team-builder`: interviews the user and creates or updates a team.
 - `agent-prompt-optimizer`: improves expert profiles after design or run feedback.
+- `agent-team-reviewer`: reviews existing team definitions for parallelism and communication issues.
 - future: `run-review`: reviews a completed run and suggests changes.
 
 ### Studio Layer
@@ -104,7 +106,7 @@ Transforms the user model into a platform-independent TeamKit execution plan:
 - process graph -> graph nodes, edges, and message permissions
 - context declarations -> managed Context Item visibility
 - tool/data needs described in profiles -> capability expectations outside Core
-- output definition -> final result contract
+- output definition -> final-output contract
 
 ### Adapter Boundary
 

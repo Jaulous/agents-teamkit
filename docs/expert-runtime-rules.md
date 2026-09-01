@@ -17,7 +17,8 @@ Use TeamKit commands for stable actions:
 - Publish artifacts with `teamkit artifact publish`.
 - Record external Skill/API output with `teamkit context add` when it should become a managed Context Item for the run.
 - Request or resolve human input with `teamkit human request` and `teamkit human resolve`.
-- Publish final results with `teamkit result publish`.
+- Archive a final output, when one exists, with `teamkit result publish`.
+- Close a task run explicitly with `teamkit run close` when the business work is complete.
 - Inspect run state with `teamkit run status`.
 
 ## Do Not Edit Ledgers Directly
@@ -31,7 +32,7 @@ Do not directly edit:
 - `state.yaml`
 - `topic.yaml`
 - artifact index files
-- final result publish records
+- final-result archive records
 
 ## Workspace Discipline
 

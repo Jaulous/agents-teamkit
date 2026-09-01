@@ -251,9 +251,6 @@
         "run_root": {
           "type": "string"
         },
-        "final_report": {
-          "type": "string"
-        },
         "message_log": {
           "type": "string"
         },

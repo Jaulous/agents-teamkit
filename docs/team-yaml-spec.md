@@ -38,7 +38,7 @@ process:
   coordinator: decision
   communication:
     allow_expert_requests: true
-    default_response: required
+    default_response: optional
   graph:
     entry: intake_review
     nodes:
@@ -191,7 +191,7 @@ process:
   mode: graph
   communication:
     allow_expert_requests: true
-    default_response: required
+    default_response: optional
     allowed_message_types:
       - request
       - reply
@@ -249,5 +249,4 @@ Only add `workspace` when an advanced user explicitly needs to override default 
 ```yaml
 workspace:
   run_root: runs/{run_id}
-  final_report: runs/{run_id}/final-report.md
 ```

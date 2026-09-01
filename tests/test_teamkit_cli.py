@@ -127,6 +127,7 @@ class TeamKitCliTest(unittest.TestCase):
         self.assertEqual(plan["adapterBoundary"]["availableAdapters"], ["workbuddy"])
         self.assertEqual(plan["process"]["graph"]["entry"], "material_intake")
         self.assertNotIn("mainSteps", plan["process"])
+        self.assertEqual(plan["commandContract"]["run"], "teamkit run init/status/close")
         self.assertEqual(plan["commandContract"]["topic"], "teamkit topic status/update/link")
         self.assertEqual(plan["commandContract"]["context"], "teamkit context add/list")
         self.assertEqual(plan["commandContract"]["graph"], "teamkit graph next/advance")
@@ -146,6 +147,7 @@ class TeamKitCliTest(unittest.TestCase):
 
         self.run_cli("run", "init", "--team", "team.yaml", "--run", "case-001")
         self.assertTrue((self.workdir / "runs" / "case-001" / "state.yaml").exists())
+        self.assertFalse((self.workdir / "runs" / "case-001" / "artifacts" / "final").exists())
         self.assertTrue((self.workdir / "runs" / "case-001" / "human-review.jsonl").exists())
         self.assertTrue((self.workdir / "runs" / "case-001" / "topic.yaml").exists())
         self.assertTrue((self.workdir / "runs" / "case-001" / "context-items.jsonl").exists())
@@ -365,10 +367,16 @@ class TeamKitCliTest(unittest.TestCase):
             "decision",
             "--file",
             "runs/case-001/experts/decision/result.md",
-            check=False,
         )
-        self.assertEqual(premature_final.returncode, 2)
-        self.assertIn("human input requests are open", premature_final.stderr)
+        premature_artifact_id = premature_final.stdout.strip()
+        self.assertRegex(premature_artifact_id, r"^art_[0-9a-f]{24}$")
+        premature_archive = self.workdir / "runs" / "case-001" / "artifacts" / "final" / f"{premature_artifact_id}.md"
+        self.assertTrue(premature_archive.exists())
+        waiting_status = json.loads(
+            self.run_cli("run", "status", "--team", "team.yaml", "--run", "case-001", "--json").stdout
+        )
+        self.assertNotEqual(waiting_status["status"], "completed")
+        self.assertEqual(waiting_status["topic"]["status"], "waiting")
 
         self.run_cli(
             "human",
@@ -424,6 +432,24 @@ class TeamKitCliTest(unittest.TestCase):
         )
         self.assertRegex(final_result.stdout.strip(), r"^art_[0-9a-f]{24}$")
 
+        active_status_result = self.run_cli(
+            "run", "status", "--team", "team.yaml", "--run", "case-001", "--json"
+        )
+        active_status = json.loads(active_status_result.stdout)
+        self.assertNotEqual(active_status["status"], "completed")
+        self.assertEqual(active_status["topic"]["status"], "active")
+
+        self.run_cli(
+            "run",
+            "close",
+            "--team",
+            "team.yaml",
+            "--run",
+            "case-001",
+            "--by",
+            "decision",
+        )
+
         status_result = self.run_cli(
             "run", "status", "--team", "team.yaml", "--run", "case-001", "--json"
         )
@@ -436,6 +462,8 @@ class TeamKitCliTest(unittest.TestCase):
         self.assertEqual(status["message_count"], 2)
         self.assertEqual(status["human_review_count"], 1)
         self.assertIsNotNone(status["final_result"])
+        self.assertTrue(status["final_result"]["path"].startswith("runs/case-001/artifacts/final/"))
+        self.assertNotEqual(status["final_result"]["path"], "runs/case-001/final-report.md")
 
         done_graph_result = self.run_cli(
             "graph", "next", "--team", "team.yaml", "--run", "case-001", "--json"
@@ -443,6 +471,72 @@ class TeamKitCliTest(unittest.TestCase):
         done_graph = json.loads(done_graph_result.stdout)
         self.assertTrue(done_graph["blocked"])
         self.assertEqual(done_graph["reason"], "topic is resolved")
+
+    def test_run_close_without_result_and_duplicate_close(self) -> None:
+        self.run_cli("run", "init", "--team", "team.yaml", "--run", "close-demo")
+        self.run_cli("run", "close", "--team", "team.yaml", "--run", "close-demo", "--by", "test")
+        status = json.loads(
+            self.run_cli("run", "status", "--team", "team.yaml", "--run", "close-demo", "--json").stdout
+        )
+        self.assertEqual(status["status"], "completed")
+        self.assertIsNone(status["final_result"])
+        self.assertEqual(status["topic"]["status"], "resolved")
+        graph = json.loads(
+            self.run_cli("graph", "next", "--team", "team.yaml", "--run", "close-demo", "--json").stdout
+        )
+        self.assertTrue(graph["blocked"])
+        self.assertEqual(graph["reason"], "topic is resolved")
+
+        duplicate = self.run_cli(
+            "run", "close", "--team", "team.yaml", "--run", "close-demo", check=False
+        )
+        self.assertEqual(duplicate.returncode, 2)
+        self.assertIn("run already closed", duplicate.stderr)
+
+    def test_result_publish_archives_without_closing_or_business_gates(self) -> None:
+        self.run_cli("run", "init", "--team", "team.yaml", "--run", "archive-demo")
+        message = self.run_cli(
+            "msg",
+            "send",
+            "--team",
+            "team.yaml",
+            "--run",
+            "archive-demo",
+            "--from",
+            "intake",
+            "--to",
+            "evidence",
+            "--subject",
+            "Required handoff",
+            "--body",
+            "A reply remains open while the result is archived.",
+            "--response",
+            "required",
+        )
+        message_id = message.stdout.strip()
+        result = self.run_cli(
+            "result",
+            "publish",
+            "--team",
+            "team.yaml",
+            "--run",
+            "archive-demo",
+            "--from",
+            "decision",
+            "--file",
+            "runs/archive-demo/experts/decision/result.md",
+        )
+        artifact_id = result.stdout.strip()
+        self.assertRegex(artifact_id, r"^art_[0-9a-f]{24}$")
+        archive = self.workdir / "runs" / "archive-demo" / "artifacts" / "final" / f"{artifact_id}.md"
+        self.assertTrue(archive.exists())
+        self.assertFalse((self.workdir / "runs" / "archive-demo" / "final-report.md").exists())
+        status = json.loads(
+            self.run_cli("run", "status", "--team", "team.yaml", "--run", "archive-demo", "--json").stdout
+        )
+        self.assertNotEqual(status["status"], "completed")
+        self.assertEqual(status["open_messages"], [message_id])
+        self.assertEqual(status["topic"]["status"], "active")
 
     def test_communication_rules_reject_unlisted_route(self) -> None:
         self.run_cli("run", "init", "--team", "team.yaml", "--run", "case-002")

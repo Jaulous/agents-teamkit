@@ -128,13 +128,17 @@ Do not edit expert prompts to grant or revoke context visibility. Profiles may d
 process:
   communication:
     allow_expert_requests: true
-    default_response: required
+    default_response: optional
     rules:
       - from: evidence
         to: policy
         when: 发现交易异常，需要判断适用规则
         response: required
 ```
+
+Communication defaults to `optional` so ordinary requests do not block the
+process. Mark a response `required` only for a handoff, aggregation, report,
+or decision gate that must be completed before the process can continue.
 
 Ask users in business language:
 
@@ -144,9 +148,13 @@ Ask users in business language:
 
 ## Graph Template
 
-Use `process.graph` for every v0.1 team. A simple fixed sequence is a straight graph.
+Use `process.graph` for every team. A simple fixed sequence is a straight graph;
+single-node behavior remains the default.
 
-TeamKit v0.1 has one current graph node per run. Do not draw parallel fan-out/fan-in or "all reviewers complete, then join" graphs. If several experts need to work during the same business phase, use one coordinator-owned graph node and have the coordinator request specialist outputs through messages, or make the review order explicit as sequential nodes.
+For genuinely parallel work, use member-targeted nodes connected by explicit
+`relation: parallel` edges and a `join: all` target node that joins the branches. Leave
+choice edges unmarked. Do not mix `parallel` and choice edges from one source:
+parallel branches have no implicit activation command in that shape.
 
 ```yaml
 process:
@@ -173,7 +181,7 @@ Ask:
 - Under what condition should work move to the next step?
 - Should the result return to a previous expert?
 - Is a loop allowed, and if so how many times?
-- Is this really an alternative branch, not parallel work that needs a join?
+- 这条边是互斥分支，还是需要 join 收束的并行？
 
 At runtime, use `teamkit graph next` to inspect available transitions and `teamkit graph advance` to record the chosen transition. Only the coordinator or an explicitly assigned expert should advance the graph.
 

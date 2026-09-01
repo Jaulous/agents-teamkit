@@ -2,7 +2,7 @@
 
 A run workspace records one execution of a user-created agent team.
 
-Stable writes in the run workspace should be performed through TeamKit commands. Experts can write private scratch files, but communication, artifact publication, events, and final result publication should be command-mediated.
+Stable writes in the run workspace should be performed through TeamKit commands. Experts can write private scratch files, but communication, artifact publication, events, final-result archiving, and run closure should be command-mediated.
 
 ## Layout
 
@@ -24,7 +24,7 @@ Stable writes in the run workspace should be performed through TeamKit commands.
   decision-log.md
   artifacts/
     expert-results/
-  final-report.md
+    final/
 ```
 
 `<run-base>` resolves from `workspace.run_root`, then `TEAMKIT_RUNS_DIR`, then
@@ -108,9 +108,12 @@ Human resolution commands append stable decision entries here.
 
 All generated or synced files.
 
-### `final-report.md`
+### `artifacts/final/`
 
-The final deliverable.
+Content-addressed archive for final outputs, when a run produces one. Files are
+named `<hash>.<ext>` and are written through `teamkit result publish` (or the
+equivalent final-kind artifact flow). Archiving a file does not change lifecycle
+state; `teamkit run close` is the command that sets the run to completed.
 
 ## Evidence Rule
 

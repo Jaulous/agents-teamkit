@@ -16,7 +16,7 @@ It is platform independent. Host-platform-specific file and artifact handling be
 
 The workspace is command-mediated.
 
-Experts may read shared files and write private scratch files. They should publish communication, artifacts, and final results through TeamKit commands.
+Experts may read shared files and write private scratch files. They should publish communication, artifacts, final-output archives, and run closure through TeamKit commands.
 
 ```sh
 teamkit msg send ...
@@ -24,6 +24,7 @@ teamkit context add ...
 teamkit artifact publish ...
 teamkit human request ...
 teamkit result publish ...
+teamkit run close ...
 ```
 
 ## Workspace Layout
@@ -31,7 +32,7 @@ teamkit result publish ...
 ```text
 <run-base>/run-001/
   brief.md
-state.yaml
+  state.yaml
   topic.yaml
   contexts/
   shared/
@@ -50,7 +51,6 @@ state.yaml
   context-items.jsonl
   human-review.jsonl
   decision-log.md
-  final-report.md
 ```
 
 The run base is resolved once for all run files. See [directory-model.md](directory-model.md).
@@ -119,9 +119,12 @@ Only TeamKit commands and runtime/adapter processes should write this file.
 
 Append-only human-readable decision log. Experts may propose entries; runtime or lead commits them.
 
-### `final-report.md`
+### `artifacts/final/`
 
-Owned by the final decision/drafting expert during drafting, then locked for QA, then finalized by the runtime or human.
+Content-addressed archive for final outputs when a run produces one. The
+runtime records the archive index in `state.yaml.final_result`. Archiving does
+not change lifecycle state; `teamkit run close` is the command that sets the
+run to completed.
 
 ## Collaboration Rules
 
@@ -130,8 +133,8 @@ Owned by the final decision/drafting expert during drafting, then locked for QA,
 3. Experts publish official result artifacts through `teamkit artifact publish`.
 4. Experts cite other outputs through artifact references, not by copying mutable scratch notes.
 5. Shared files are append-only unless the runtime explicitly assigns edit ownership.
-6. The final report has one active owner at a time.
-7. Human decisions go into `decision-log.md` and should be cited by the final report.
+6. A final-output file, when one exists, has one active owner while being drafted.
+7. Human decisions go into `decision-log.md` and should be cited by any final output that uses them.
 8. Experts do not directly edit ledgers or artifact indexes.
 
 ## Suggested Run States
@@ -159,10 +162,9 @@ active_nodes:
   - node: policy_review
     status: active
     waiting_on: []
-final_report_owner: decision
 open_messages:
   - msg_003
-final_result: null
+final_result: null  # archived final-output index, when one exists
 ```
 
 ## Evidence Discipline

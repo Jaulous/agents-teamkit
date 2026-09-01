@@ -77,7 +77,7 @@ bin/teamkit                    local CLI entrypoint
 teamkit/                       Python command implementation
 schemas/team.schema.json       JSON Schema for team definitions
 examples/risk-review-team/     complete example team
-skills/                        Team builder and prompt optimizer skills
+skills/                        Team builder, prompt optimizer, and reviewer skills
 docs/                          architecture, specs, commands, adapter notes
 scripts/install-workbuddy.sh   optional WorkBuddy adapter installer
 tests/                         CLI and adapter tests
@@ -130,6 +130,7 @@ bin/teamkit workbuddy export --team examples/risk-review-team/team.yaml --out bu
 
 - Keep `team.yaml` stable, business-facing, and platform-independent.
 - Improve team creation and profile optimization skills.
+- Add design-time team health checks for parallelism and communication structure.
 - Add richer run review and profile feedback loops.
 - Build deeper runtime adapters only after official platform APIs are confirmed.
 - Add a visual Team Studio once the file and command protocol stabilizes.

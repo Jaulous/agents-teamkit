@@ -2,6 +2,57 @@
 
 All notable changes to Agents TeamKit are documented here.
 
+## [0.3.2] - 2026-09-01
+
+This release separates task closure from final-output archiving so the runtime
+does not decide whether a business task is complete.
+
+### Added
+
+- `teamkit run close` for explicit task closure without file, message, human
+  input, or graph-completion checks.
+- Generated WorkBuddy command lists now include `run close`.
+
+### Changed (Breaking)
+
+- `result publish` is now pure archiving: it stores content-addressed files in
+  `artifacts/final/<hash>.<ext>`, records `final_result`, and never closes a
+  run or resolves a Topic. It no longer checks open messages, human input, or
+  unfinished branches, and its `--force` option is removed.
+- The `workspace.final_report` override and fixed `final-report.md` path are
+  removed. A prior “publish means close” flow must call `run close` explicitly.
+- Batch recovery treats `state.status == completed` (set by `run close`) as the
+  close signal. Core permits mechanical writes after close.
+
+### Known issues / next iteration
+
+- `output.name` remains a required protocol field even though runtime does not
+  consume it.
+- Expert `result.md`/`scratch.md` scaffolding and the unwritten `archived` Topic
+  state remain for a later cleanup.
+
+Core graph and parallel semantics are unchanged.
+
+## [0.3.1] - 2026-09-01
+
+This release adds design-time team review capabilities and aligns the
+surrounding documentation with the v0.3 collaboration semantics.
+
+### Added
+
+- `agent-team-reviewer` skill for reviewing existing team definitions, with
+  `team-review-rubric.md`, `parallelism-playbook.md`, and its interface shim.
+
+### Changed
+
+- Synchronized the Team Builder definition guide with v0.3 parallelism
+  semantics.
+- Converged the `team-yaml-spec.md` examples and `teamkit-commands.md`
+  descriptions with the current protocol behavior.
+- No core semantics were changed; core code remains untouched.
+
+There are no breaking changes in this release.
+
 ## [0.3.0] - 2026-09-01
 
 This release completes the v0.2 directory and installation governance work and
