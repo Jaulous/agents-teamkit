@@ -1,112 +1,149 @@
 # Agents TeamKit
 
-This repository contains Agents TeamKit, a lightweight, platform-independent kit that helps business users design and run multi-agent teams without learning agent engineering.
+Agents TeamKit is a lightweight toolkit for designing, validating, packaging, and running repeatable multi-agent teams for business workflows.
 
-WorkBuddy is the first adapter and installation target. It must not define the TeamKit user model or core coordination model.
+It gives business users a simple team model: experts, responsibilities, collaboration flow, managed context, and expected output. TeamKit turns that model into a deterministic execution plan and run workspace. Platform adapters can then package the same team for a concrete runtime such as WorkBuddy without leaking platform details into the core model.
 
-## Product Position
+> Project status: v0.3.0. The core file format, directory model, graph execution, parallel fork/join, batch ledger, and WorkBuddy package adapter are implemented. Platform-native scheduling remains adapter-owned.
 
-Agents TeamKit lets a business user define:
+## Why TeamKit
 
-- a team of business experts
-- each expert's responsibility boundary
-- how experts collaborate
-- which managed Context Items the whole team or selected experts can see
-- what final output should be produced
+Most multi-agent setups collapse into long prompts, ad hoc files, and unclear handoffs. TeamKit keeps the team definition inspectable and versionable:
 
-The kit then compiles that user-facing definition into a TeamKit Core execution plan and deterministic run workspace. A platform Adapter maps that plan into a concrete runtime. The current WorkBuddy Adapter exports installable WorkBuddy packages, but that mapping is deliberately outside TeamKit Core.
+- `team.yaml` describes the business team and process graph.
+- `experts/*.md` defines each expert's role, inputs, outputs, and collaboration rules.
+- `references/*` and Context Items control what information each expert can see.
+- `teamkit` commands validate teams, compile plans, initialize runs, record messages, publish artifacts, and store final results.
+- Adapters package the same TeamKit team into a target runtime.
 
-## Core Principle
+## Install
 
-Keep three models separate:
+Use the source checkout directly:
 
-- **User model**: team, experts, flow, context visibility, output.
-- **TeamKit Core model**: Team, Agent, Flow Graph, Context Item, Topic, Message, Artifact, Run.
-- **Adapter model**: WorkBuddy package/agent/skill/message mapping, or another platform's equivalent.
+```sh
+git clone https://github.com/Jaulous/agents-teamkit.git
+cd agents-teamkit
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -e .
+```
 
-The lower layers can be flexible and technical, but the business user should only see the model they can reason about. Adapter constraints must not leak backward into the user model or force compromises in the core abstractions.
+Or run the local entrypoint without installing:
 
-## Contents
+```sh
+bin/teamkit --help
+```
 
-- `docs/architecture.md`: overall architecture and boundaries.
-- `docs/product-scope-v0.1.md`: first-phase product scope and non-goals.
-- `docs/user-model.md`: user-facing concepts and their internal mappings.
-- `docs/team-yaml-spec.md`: first version of the team definition protocol.
-- `docs/coordination-model.md`: thin Graph + Topic + Message coordination model.
-- `docs/context-items.md`: managed context file snapshots and visibility.
-- `docs/workbuddy-bridge.md`: WorkBuddy integration responsibilities.
-- `docs/workbuddy-adapter.md`: WorkBuddy export/install adapter usage.
-- `docs/mvp-capability-map.md`: implemented vs deferred capabilities.
-- `docs/communication-protocol.md`: platform-independent expert communication protocol.
-- `docs/collaboration-workspace.md`: shared workspace ownership and anti-confusion rules.
-- `docs/teamkit-commands.md`: deterministic command layer for stable actions.
-- `docs/run-workspace.md`: run workspace and evidence layout.
-- `schemas/team.schema.json`: draft schema for validating team definitions.
-- `skills/agent-team-builder`: skill for creating and updating teams.
-- `skills/agent-prompt-optimizer`: skill for improving expert profiles.
-- `examples/risk-review-team`: example risk review team.
-- `bin/teamkit` and `teamkit/`: local deterministic command layer.
+## Quick Start
 
-## Local Smoke Run
-
-From this directory:
+Validate and compile the included risk review team:
 
 ```sh
 bin/teamkit team validate --team examples/risk-review-team/team.yaml
-bin/teamkit team compile --team examples/risk-review-team/team.yaml --out examples/risk-review-team/build/execution-plan.json
+bin/teamkit team compile \
+  --team examples/risk-review-team/team.yaml \
+  --out examples/risk-review-team/build/execution-plan.json
+```
+
+Initialize a deterministic run workspace:
+
+```sh
 bin/teamkit run init --team examples/risk-review-team/team.yaml --run demo-001
 bin/teamkit run status --team examples/risk-review-team/team.yaml --run demo-001
 bin/teamkit graph next --team examples/risk-review-team/team.yaml --run demo-001
+bin/teamkit home --team examples/risk-review-team/team.yaml --run demo-001
 ```
 
-The first version is file-based and platform independent. WorkBuddy-native execution belongs behind the Adapter layer.
+Try the example in detail:
 
-## WorkBuddy Trial
+- [Risk review example](examples/risk-review-team/README.md)
+- [Team YAML spec](docs/team-yaml-spec.md)
+- [Command reference](docs/teamkit-commands.md)
 
-For a user who only wants to install Agents TeamKit 工作台 into WorkBuddy:
+## Core Concepts
+
+TeamKit keeps three layers separate:
+
+- **User model**: team, experts, process flow, managed context visibility, output.
+- **Core model**: Team, Graph, Topic, Context Item, Message, Artifact, Run.
+- **Adapter model**: WorkBuddy package mapping today, other runtime mappings later.
+
+The user model should stay business-readable. Runtime constraints belong behind adapters.
+
+## Repository Layout
+
+```text
+bin/teamkit                    local CLI entrypoint
+teamkit/                       Python command implementation
+schemas/team.schema.json       JSON Schema for team definitions
+examples/risk-review-team/     complete example team
+skills/                        Team builder and prompt optimizer skills
+docs/                          architecture, specs, commands, adapter notes
+scripts/install-workbuddy.sh   optional WorkBuddy adapter installer
+tests/                         CLI and adapter tests
+```
+
+Start with [docs/README.md](docs/README.md) for the documentation map.
+
+## WorkBuddy Adapter
+
+WorkBuddy is the first adapter and packaging target. It is optional: TeamKit Core remains platform-independent.
+
+Install the TeamKit Workbench package into WorkBuddy:
 
 ```sh
-/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.1.3/scripts/install-workbuddy.sh)"
+/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.3.0/scripts/install-workbuddy.sh)"
 ```
 
-This uses a temporary build directory, installs the Agents TeamKit runtime inside the WorkBuddy plugin package, and registers Agents TeamKit 工作台 in the user's WorkBuddy expert marketplace.
-
-Install the Agents TeamKit 工作台 entry package first:
+Or export packages from a local checkout:
 
 ```sh
 bin/teamkit workbuddy detect --json
 bin/teamkit workbuddy export-init --out build/workbuddy --force
 bin/teamkit workbuddy install --package build/workbuddy/agents-teamkit-workbench --force
-```
 
-Then open WorkBuddy and look for `Agents TeamKit 工作台`. Use it to create teams, manage Context Item visibility, validate, export, and improve user-owned teams.
-
-You can also export and install the example risk review team as a WorkBuddy Team expert package:
-
-```sh
 bin/teamkit workbuddy export --team examples/risk-review-team/team.yaml --out build/workbuddy --force
 bin/teamkit workbuddy install --package build/workbuddy/risk-review --force
 ```
 
-Then open WorkBuddy and look for the installed `风控审核团队` in the expert center.
+See [docs/workbuddy-adapter.md](docs/workbuddy-adapter.md) for the adapter boundary and local installation details.
+See [docs/directory-model.md](docs/directory-model.md) for tool home, team roots, and run data placement.
 
-## First MVP Scope
+## Development
 
-The first implementation should prove this loop:
+Run the test suite:
 
-1. Team Builder Skill creates `team.yaml` and expert profiles.
-2. A user can edit the same files directly or through a page.
-3. Agents use `teamkit` commands for messages, artifacts, and results instead of hand-editing ledgers.
-4. Team Compiler creates a platform-independent execution plan.
-5. WorkBuddy Adapter exports the Agents TeamKit 工作台 package as the WorkBuddy Skill carrier and entry point.
-6. WorkBuddy Adapter exports user-defined teams into WorkBuddy Team packages and later maps command effects into WorkBuddy-native execution.
-7. A run workspace records Topic state, managed context, messages, artifacts, human input, and final output.
-8. Prompt Optimizer Skill improves expert profiles after real runs.
+```sh
+python3 -m unittest discover -s tests
+```
 
-## Deliberate Non-Goals
+Useful smoke commands:
 
-- Do not build a replacement message bus if the target platform's official agent communication is sufficient.
-- Do not expose API schemas, tool registries, or MCP concepts to business users.
-- Do not manage tool/MCP/Skill assignment in TeamKit Core; the target runtime, Adapter, or user-managed agent definitions own "what tools an agent can use".
-- Do not rely on prompt-only discipline for stable actions; provide deterministic commands.
-- Do not implement CodexLoom's long-lived thread-to-agent model; it is only a design reference for communication, workspace, and governance patterns.
+```sh
+bin/teamkit team validate --team examples/risk-review-team/team.yaml
+bin/teamkit workbuddy export-init --out build/workbuddy --force
+bin/teamkit workbuddy export --team examples/risk-review-team/team.yaml --out build/workbuddy --force
+```
+
+## Roadmap
+
+- Keep `team.yaml` stable, business-facing, and platform-independent.
+- Improve team creation and profile optimization skills.
+- Add richer run review and profile feedback loops.
+- Build deeper runtime adapters only after official platform APIs are confirmed.
+- Add a visual Team Studio once the file and command protocol stabilizes.
+
+## Publishing Checklist
+
+This project is licensed under the [MIT License](LICENSE). The copyright notice preserves attribution to the original author while allowing broad use, modification, distribution, sublicensing, and commercial use.
+
+Before making this repository public, confirm the public GitHub location in:
+
+- install commands in this README
+- `scripts/install-workbuddy.sh`
+- `docs/workbuddy-adapter.md`
+- `pyproject.toml` project URLs
+
+## Contributing
+
+Issues and pull requests are welcome once the repository is public. See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, testing, and contribution guidelines.

@@ -172,20 +172,6 @@ process:
         when: 复核发现证据缺口或报告问题，需要修改草稿
         max_visits: 2
 
-workspace:
-  run_root: runs/{run_id}
-  final_report: runs/{run_id}/final-report.md
-  message_log: runs/{run_id}/messages.jsonl
-  event_log: runs/{run_id}/events.jsonl
-  context_items_log: runs/{run_id}/context-items.jsonl
-  context_item_dir: runs/{run_id}/contexts
-  human_review_log: runs/{run_id}/human-review.jsonl
-  decision_log: runs/{run_id}/decision-log.md
-  state: runs/{run_id}/state.yaml
-  topic: runs/{run_id}/topic.yaml
-  expert_workspace_dir: runs/{run_id}/experts
-  expert_result_dir: runs/{run_id}/artifacts/expert-results
-
 human_review:
   required_when:
     - 证据不足

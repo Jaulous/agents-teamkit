@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.local/teamkit/team.schema.json",
+  "$id": "https://raw.githubusercontent.com/Jaulous/agents-teamkit/main/schemas/team.schema.json",
   "title": "TeamKit Team Definition",
   "type": "object",
   "required": ["version", "team", "experts", "process", "output"],
@@ -131,9 +131,13 @@
         "coordinator": {
           "type": "string"
         },
-        "communication": {
-          "type": "object",
-          "properties": {
+          "communication": {
+            "type": "object",
+            "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["manual", "hybrid", "lead"]
+            },
             "allow_expert_requests": {
               "type": "boolean"
             },
@@ -196,6 +200,10 @@
                   },
                   "task": {
                     "type": "string"
+                  },
+                  "join": {
+                    "type": "string",
+                    "enum": ["all"]
                   }
                 },
                 "additionalProperties": true

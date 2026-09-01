@@ -10,6 +10,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "teamkit" / "cli.py"
@@ -53,6 +55,63 @@ class TeamKitCliTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("teamkit", result.stdout)
+
+    def test_home_and_external_run_root_keep_all_run_files_together(self) -> None:
+        team_file = self.workdir / "team.yaml"
+        data = yaml.safe_load(team_file.read_text(encoding="utf-8"))
+        data.pop("workspace", None)
+        team_file.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        external = self.workdir / "external-runs"
+        env = os.environ.copy()
+        env["TEAMKIT_SKIP_RUNTIME_ENV"] = "1"
+        env["TEAMKIT_RUNS_DIR"] = str(external)
+        result = subprocess.run(
+            [sys.executable, str(CLI), "--team", "team.yaml", "run", "init", "--run", "external-001"],
+            cwd=self.workdir, text=True, capture_output=True, check=False, env=env,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((external / "external-001" / "state.yaml").exists())
+        self.assertTrue((external / "external-001" / "artifacts" / "artifacts.jsonl").exists())
+        self.assertFalse((self.workdir / "runs" / "external-001" / "state.yaml").exists())
+        home = self.run_cli("home", "--team", "team.yaml", "--run", "external-001", "--json")
+        payload = json.loads(home.stdout)
+        self.assertEqual(payload["runBaseSource"], "default")
+
+    def test_parallel_fork_join_and_batch_ledger(self) -> None:
+        team_file = self.workdir / "team.yaml"
+        data = yaml.safe_load(team_file.read_text(encoding="utf-8"))
+        nodes = data["process"]["graph"]["nodes"]
+        nodes.extend([
+            {"id": "parallel_a", "expert": "evidence", "task": "A"},
+            {"id": "parallel_b", "expert": "policy", "task": "B"},
+            {"id": "join_node", "expert": "decision", "task": "Join", "join": "all"},
+        ])
+        data["process"]["graph"]["edges"] = [
+            {"from": "material_intake", "to": "parallel_a", "relation": "parallel"},
+            {"from": "material_intake", "to": "parallel_b", "relation": "parallel"},
+            {"from": "parallel_a", "to": "join_node", "relation": "parallel"},
+            {"from": "parallel_b", "to": "join_node", "relation": "parallel"},
+        ]
+        team_file.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        self.run_cli("run", "init", "--team", "team.yaml", "--run", "parallel-001")
+        fork = self.run_cli("graph", "advance", "--team", "team.yaml", "--run", "parallel-001", "--json")
+        fork_payload = json.loads(fork.stdout)
+        self.assertEqual({item["currentNode"] for item in fork_payload["activeNodes"]}, {"parallel_a", "parallel_b"})
+        self.run_cli("graph", "advance", "--team", "team.yaml", "--run", "parallel-001", "--node", "parallel_a")
+        blocked = json.loads(self.run_cli("graph", "next", "--team", "team.yaml", "--run", "parallel-001", "--json").stdout)
+        self.assertTrue(any(item["currentNode"] == "parallel_b" for item in blocked["activeNodes"]))
+        self.run_cli("graph", "advance", "--team", "team.yaml", "--run", "parallel-001", "--node", "parallel_b")
+        topic = json.loads(self.run_cli("topic", "status", "--team", "team.yaml", "--run", "parallel-001", "--json").stdout)
+        self.assertEqual(topic["active_nodes"][0]["node"], "join_node")
+
+        cases_dir = self.workdir / "cases"
+        cases_dir.mkdir()
+        (cases_dir / "a.md").write_text("a", encoding="utf-8")
+        (cases_dir / "b.md").write_text("b", encoding="utf-8")
+        init = json.loads(self.run_cli("batch", "init", "--team", "team.yaml", "--batch", "smoke", "--cases-dir", "cases", "--json").stdout)
+        next_payload = json.loads(self.run_cli("batch", "next", "--team", "team.yaml", "--batch", init["batchId"], "--max", "2").stdout)
+        self.assertEqual(len(next_payload["cases"]), 2)
+        self.assertEqual(next_payload["counts"]["running"], 2)
 
     def test_end_to_end_run_workspace(self) -> None:
         self.run_cli("team", "validate", "--team", "team.yaml")

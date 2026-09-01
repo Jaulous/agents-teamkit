@@ -14,10 +14,10 @@ Both use bundled TeamKit command wrappers to keep Graph, Topic, Context Items, M
 For end users who only want to install `Agents TeamKit 工作台` into their own WorkBuddy:
 
 ```sh
-/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.1.3/scripts/install-workbuddy.sh)"
+/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.3.0/scripts/install-workbuddy.sh)"
 ```
 
-The installer downloads this repository, uses a temporary Python runtime for installation, exports `Agents TeamKit 工作台`, installs a package-local runtime under the WorkBuddy plugin directory, and registers the package in WorkBuddy's user expert marketplace. It does not create `~/.teamkit`.
+The installer downloads this repository, uses a temporary Python runtime for installation, exports `Agents TeamKit 工作台`, installs a package-local runtime under the WorkBuddy plugin directory, and registers the package in WorkBuddy's user expert marketplace. `TEAMKIT_HOME` is the tool-owned directory, separate from team definitions and run data; generated wrappers inject a per-team `TEAMKIT_RUNS_DIR`.
 
 Advanced options:
 
@@ -159,11 +159,11 @@ In WorkBuddy, open the installed `风控审核团队` expert team and start with
 The lead should use the bundled runtime skill and commands such as:
 
 ```sh
-python3 scripts/teamkit.py team validate
-python3 scripts/teamkit.py run init --run task-001
-python3 scripts/teamkit.py topic status --run task-001
-python3 scripts/teamkit.py context list --run task-001
-python3 scripts/teamkit.py graph next --run task-001
+{{TEAMKIT_SCRIPT}} team validate
+{{TEAMKIT_SCRIPT}} run init --run task-001
+{{TEAMKIT_SCRIPT}} run status --run task-001
+{{TEAMKIT_SCRIPT}} context list --run task-001
+{{TEAMKIT_SCRIPT}} graph next --run task-001
 ```
 
 ## Current Adapter Boundary

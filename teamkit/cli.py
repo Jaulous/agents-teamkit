@@ -17,6 +17,13 @@ from pathlib import Path
 from typing import Any, Callable
 
 try:
+    from teamkit import __version__
+except ModuleNotFoundError:  # direct `python teamkit/cli.py` source-mode entrypoint
+    _version_text = (Path(__file__).with_name("__init__.py")).read_text(encoding="utf-8")
+    _version_match = re.search(r'__version__\s*=\s*["\']([^"\']+)', _version_text)
+    __version__ = _version_match.group(1) if _version_match else "0.1.0"
+
+try:
     import fcntl
 except ImportError:  # pragma: no cover - non-POSIX fallback
     fcntl = None
@@ -38,6 +45,11 @@ DEFAULT_WORKBUDDY_APP = Path("/Applications/WorkBuddy.app")
 
 class TeamKitError(Exception):
     pass
+
+
+def teamkit_home() -> Path:
+    """Return the tool-owned home directory used for default build output."""
+    return Path(os.environ.get("TEAMKIT_HOME", "~/.teamkit")).expanduser().resolve()
 
 
 def now() -> str:
@@ -166,6 +178,10 @@ class TeamContext:
     def communication(self) -> dict[str, Any]:
         return self.process().get("communication", {}) or {}
 
+    def communication_mode(self) -> str:
+        mode = str(self.communication().get("mode") or "hybrid").strip().lower()
+        return mode if mode in {"manual", "hybrid", "lead"} else "hybrid"
+
     def graph(self) -> dict[str, Any]:
         graph = self.process().get("graph", {}) or {}
         return graph if isinstance(graph, dict) else {}
@@ -208,20 +224,57 @@ class TeamContext:
     def reference_path(self, value: str) -> Path:
         return self.root / value
 
+    def run_base(self, run_id: str) -> Path:
+        """Resolve the one run directory used by every default run artifact."""
+        workspace = self.team.get("workspace", {}) or {}
+        explicit = workspace.get("run_root") if isinstance(workspace, dict) else None
+        if explicit:
+            value = str(explicit).replace("{run_id}", run_id)
+            path = Path(value)
+            if not path.is_absolute():
+                path = self.root / path
+            return path.resolve()
+        injected = os.environ.get("TEAMKIT_RUNS_DIR", "").strip()
+        if injected:
+            return (Path(injected).expanduser() / run_id).resolve()
+        return (self.root / "runs" / run_id).resolve()
+
+    def run_base_source(self) -> str:
+        workspace = self.team.get("workspace", {}) or {}
+        if isinstance(workspace, dict) and workspace.get("run_root"):
+            return "workspace.run_root"
+        if os.environ.get("TEAMKIT_RUNS_DIR", "").strip():
+            return "TEAMKIT_RUNS_DIR"
+        return "default"
+
+    def team_base(self, run_id: str = "_probe") -> Path:
+        return self.run_base(run_id).parent
+
     def path_for(self, key: str, run_id: str, default: str) -> Path:
         workspace = self.team.get("workspace", {}) or {}
-        pattern = str(workspace.get(key) or default)
-        value = pattern.replace("{run_id}", run_id)
+        explicit = workspace.get(key) if isinstance(workspace, dict) else None
+        if explicit:
+            value = str(explicit).replace("{run_id}", run_id)
+            path = Path(value)
+            if not path.is_absolute():
+                path = self.root / path
+            return path.resolve()
+        marker = f"runs/{run_id}"
+        if default.startswith(marker):
+            suffix = default[len(marker):].lstrip("/")
+            base = self.run_base(run_id)
+            return (base / suffix).resolve() if suffix else base
+        value = default.replace("{run_id}", run_id)
         path = Path(value)
         if not path.is_absolute():
             path = self.root / path
-        return path
+        return path.resolve()
 
     def run_root(self, run_id: str) -> Path:
-        return self.path_for("run_root", run_id, f"runs/{run_id}")
+        return self.run_base(run_id)
 
     def run_lock_path(self, run_id: str) -> Path:
-        return self.run_root(run_id) / ".teamkit.lock"
+        return self.run_base(run_id) / ".teamkit.lock"
 
     def state_path(self, run_id: str) -> Path:
         return self.path_for("state", run_id, f"runs/{run_id}/state.yaml")
@@ -263,7 +316,7 @@ class TeamContext:
         )
 
     def artifact_index_path(self, run_id: str) -> Path:
-        return self.run_root(run_id) / "artifacts" / "artifacts.jsonl"
+        return self.run_base(run_id) / "artifacts" / "artifacts.jsonl"
 
     def declared_contexts(self) -> list[dict[str, Any]]:
         contexts = self.team.get("contexts") or []
@@ -286,11 +339,27 @@ class TeamContext:
 
     def communication_allowed(self, sender: str, recipient: str) -> bool:
         rules = self.communication().get("rules") or []
-        if self.graph_communication_allowed(sender, recipient):
+        mode = self.communication_mode()
+        if mode != "manual" and self.graph_communication_allowed(sender, recipient):
             return True
         if rules:
-            return self.communication_rule(sender, recipient) is not None
+            if self.communication_rule(sender, recipient) is not None:
+                return True
+            if mode == "manual":
+                return self.is_lead_member_pair(sender, recipient)
+            return False
+        if mode == "manual":
+            lead = str(self.process().get("lead") or self.process().get("coordinator") or "")
+            return bool(self.communication().get("allow_expert_requests", False)) and recipient == lead and sender != lead
         return bool(self.communication().get("allow_expert_requests", True))
+
+    def is_lead_member_pair(self, sender: str, recipient: str) -> bool:
+        lead = str(self.process().get("lead") or self.process().get("coordinator") or "")
+        if not lead or sender == recipient or lead not in {sender, recipient}:
+            return False
+        if sender == lead:
+            return True
+        return bool(self.communication().get("allow_expert_requests", False))
 
     def graph_communication_allowed(self, sender: str, recipient: str) -> bool:
         node_map = self.graph_node_map()
@@ -307,8 +376,8 @@ class TeamContext:
         rule = self.communication_rule(sender, recipient)
         if rule and rule.get("response") in RESPONSE_MODES:
             return str(rule["response"])
-        response = str(self.communication().get("default_response") or "required")
-        return response if response in RESPONSE_MODES else "required"
+        response = str(self.communication().get("default_response") or "optional")
+        return response if response in RESPONSE_MODES else "optional"
 
     def message_type_allowed(self, message_type: str) -> bool:
         allowed = self.communication().get("allowed_message_types")
@@ -322,6 +391,20 @@ def run_lock(ctx: TeamContext, run_id: str):
     path = ctx.run_lock_path(run_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
+        if fcntl is not None:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if fcntl is not None:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+@contextmanager
+def batch_lock(batch_dir: Path):
+    batch_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = batch_dir / ".batch.lock"
+    with lock_path.open("a", encoding="utf-8") as handle:
         if fcntl is not None:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         try:
@@ -375,9 +458,10 @@ def resolve_input_file(ctx: TeamContext, raw_path: str, run_id: str | None = Non
     path = Path(raw_path).expanduser()
     if path.is_absolute():
         return path
-    candidates = [Path.cwd() / path, ctx.root / path]
+    candidates = []
     if run_id:
         candidates.append(ctx.run_root(run_id) / path)
+    candidates.extend([ctx.root / path, Path.cwd() / path])
     for candidate in candidates:
         if candidate.exists():
             return candidate.resolve()
@@ -631,6 +715,7 @@ def initial_topic_record(ctx: TeamContext, run_id: str) -> dict[str, Any]:
         "status": "active",
         "summary": "",
         "current_node": current_node,
+        "active_nodes": ([{"node": current_node, "status": "active", "waiting_on": []}] if current_node else []),
         "waiting_on": None,
         "context_refs": [],
         "evidence": [],
@@ -806,6 +891,8 @@ def validate_team_definition(ctx: TeamContext) -> list[str]:
     if not isinstance(communication, dict):
         errors.append("process.communication must be an object")
         communication = {}
+    if communication.get("mode") and communication.get("mode") not in {"manual", "hybrid", "lead"}:
+        errors.append("process.communication.mode must be manual, hybrid, or lead")
     default_response = communication.get("default_response")
     if default_response and default_response not in RESPONSE_MODES:
         errors.append("process.communication.default_response is invalid")
@@ -942,6 +1029,35 @@ def validate_or_raise(ctx: TeamContext) -> None:
         raise TeamKitError("team definition is invalid:\n- " + "\n- ".join(errors))
 
 
+WORKSPACE_KEYS = {
+    "run_root", "final_report", "message_log", "event_log", "context_items_log",
+    "context_item_dir", "human_review_log", "decision_log", "state", "topic",
+    "expert_workspace_dir", "expert_result_dir",
+}
+GRAPH_NODE_KEYS = {"id", "expert", "task", "join"}
+GRAPH_EDGE_KEYS = {"id", "from", "to", "when", "relation", "max_visits"}
+
+
+def validation_warnings(ctx: TeamContext) -> list[str]:
+    warnings: list[str] = []
+    workspace = ctx.team.get("workspace", {}) or {}
+    if isinstance(workspace, dict):
+        for key in workspace:
+            if key not in WORKSPACE_KEYS:
+                warnings.append(f"workspace.{key} is unknown and will be ignored")
+    for node in ctx.graph_nodes():
+        for key in node:
+            if key not in GRAPH_NODE_KEYS:
+                warnings.append(f"graph node {node.get('id', '<unknown>')}.{key} is unknown and will be ignored")
+        if "max_visits" in node:
+            warnings.append(f"graph node {node.get('id', '<unknown>')} max_visits is not consumed by the execution engine (only edge-level max_visits applies)")
+    for index, edge in enumerate(ctx.graph_edges()):
+        for key in edge:
+            if key not in GRAPH_EDGE_KEYS:
+                warnings.append(f"graph edge {edge_id(edge, index)}.{key} is unknown and will be ignored")
+    return warnings
+
+
 def build_execution_plan(ctx: TeamContext) -> dict[str, Any]:
     validate_or_raise(ctx)
     experts: list[dict[str, Any]] = []
@@ -1003,6 +1119,7 @@ def build_execution_plan(ctx: TeamContext) -> dict[str, Any]:
             "artifacts": "teamkit artifact publish/list",
             "humanReview": "teamkit human request/resolve/list",
             "result": "teamkit result publish",
+            "batch": "teamkit batch init/next/update/status/recover",
         },
         "adapterBoundary": {
             "target": None,
@@ -1020,7 +1137,29 @@ def cmd_team_validate(args: argparse.Namespace) -> int:
         for error in errors:
             print(f"error: {error}", file=sys.stderr)
         return 2
+    for warning in validation_warnings(ctx):
+        print(f"warning: {warning}", file=sys.stderr)
     print(f"valid team definition: {ctx.team_file}")
+    return 0
+
+
+def cmd_home(args: argparse.Namespace) -> int:
+    ctx = TeamContext(Path(args.team))
+    probe = str(args.run or "_probe")
+    payload = {
+        "toolHome": str(teamkit_home()),
+        "teamRoot": str(ctx.root),
+        "teamFile": str(ctx.team_file),
+        "runBase": str(ctx.run_base(probe)),
+        "teamBase": str(ctx.team_base(probe)),
+        "runBaseSource": ctx.run_base_source(),
+        "runId": probe,
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        for key, value in payload.items():
+            print(f"{key}: {value}")
     return 0
 
 
@@ -1190,7 +1329,6 @@ def cmd_run_init(args: argparse.Namespace) -> int:
 
     run_root.mkdir(parents=True, exist_ok=True)
     for path in (
-        run_root / "input",
         run_root / "shared",
         ctx.context_item_dir(run_id),
         run_root / "artifacts" / "final",
@@ -1267,6 +1405,7 @@ def cmd_run_init(args: argparse.Namespace) -> int:
         "status": "prepared",
         "process_mode": ctx.process().get("mode", "graph"),
         "active_node": topic["current_node"],
+        "active_nodes": topic.get("active_nodes", []),
         "open_messages": [],
         "open_human_reviews": [],
         "context_items": [
@@ -1310,6 +1449,33 @@ def open_required_messages(ctx: TeamContext, run_id: str) -> list[dict[str, Any]
     ]
 
 
+def topic_active_nodes(topic: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the v0.3 active-node ledger, synthesizing it for v0.1 topics."""
+    raw = topic.get("active_nodes")
+    if isinstance(raw, list):
+        result = [dict(item) for item in raw if isinstance(item, dict) and item.get("node")]
+        if result:
+            return result
+    current = str(topic.get("current_node") or "")
+    return ([{"node": current, "status": "active", "waiting_on": []}] if current else [])
+
+
+def save_active_nodes(topic: dict[str, Any], entries: list[dict[str, Any]]) -> None:
+    order = {"active": 0, "waiting": 1, "done": 2}
+    entries.sort(key=lambda item: (order.get(str(item.get("status")), 3), item.get("activatedAt", "")))
+    topic["active_nodes"] = entries
+    active = next((item for item in entries if item.get("status") == "active"), None)
+    if active:
+        topic["current_node"] = str(active.get("node"))
+    else:
+        fallback = next((item for item in entries if item.get("status") == "waiting"), None)
+        topic["current_node"] = str((fallback or {}).get("node") or "")
+
+
+def active_node_entries(topic: dict[str, Any]) -> list[dict[str, Any]]:
+    return [item for item in topic_active_nodes(topic) if item.get("status") in {"active", "waiting"}]
+
+
 def cmd_run_status(args: argparse.Namespace) -> int:
     ctx = TeamContext(Path(args.team))
     state = load_state(ctx, args.run)
@@ -1333,6 +1499,17 @@ def cmd_run_status(args: argparse.Namespace) -> int:
     view["artifact_count"] = len(artifacts)
     view["human_review_count"] = len(human_reviews)
     if topic:
+        graph_view = graph_next_actions(ctx, args.run)
+        view["activeNodes"] = graph_view.get("activeNodes", [])
+        if len(view["activeNodes"]) == 1:
+            actions = view["activeNodes"][0].get("actions") or []
+            next_action = next((item for item in actions if item.get("allowed")), None)
+            view["nextExpert"] = next_action.get("expert") if next_action else None
+            view["nextTask"] = next_action.get("task") if next_action else None
+        else:
+            view["nextExpert"] = None
+            view["nextTask"] = None
+        view["graph"] = graph_view
         view["topic"] = {
             "id": topic.get("id"),
             "status": topic.get("status"),
@@ -1404,6 +1581,12 @@ def cmd_topic_update(args: argparse.Namespace) -> int:
         changed = True
     if args.current_node:
         ctx.require_graph_node(args.current_node)
+        active_entries = active_node_entries(topic)
+        if len(active_entries) > 1:
+            nodes = ", ".join(str(item.get("node")) for item in active_entries)
+            raise TeamKitError(
+                f"multiple active graph nodes ({nodes}); cannot rewrite current_node directly, use graph advance --node"
+            )
         if topic.get("current_node") != args.current_node:
             visits = topic.setdefault("visits", {})
             if not isinstance(visits, dict):
@@ -1411,6 +1594,7 @@ def cmd_topic_update(args: argparse.Namespace) -> int:
                 topic["visits"] = visits
             visits[args.current_node] = int(visits.get(args.current_node, 0)) + 1
         topic["current_node"] = args.current_node
+        topic["active_nodes"] = [{"node": args.current_node, "status": "active", "waiting_on": []}]
         state["active_node"] = args.current_node
         changed = True
     if args.summary is not None or args.summary_file:
@@ -1457,7 +1641,19 @@ def cmd_topic_update(args: argparse.Namespace) -> int:
         ),
     )
     if args.json:
-        print(json.dumps(topic_status_view(ctx, args.run), ensure_ascii=False, indent=2))
+        response = topic_status_view(ctx, args.run)
+        next_view = graph_next_actions(ctx, args.run)
+        response["activeNodes"] = next_view.get("activeNodes", [])
+        if len(response["activeNodes"]) == 1:
+            next_actions = response["activeNodes"][0].get("actions") or []
+            next_action = next((item for item in next_actions if item.get("allowed")), None)
+            response["nextExpert"] = next_action.get("expert") if next_action else None
+            response["nextTask"] = next_action.get("task") if next_action else None
+        else:
+            response["nextExpert"] = None
+            response["nextTask"] = None
+        response["graph"] = next_view
+        print(json.dumps(response, ensure_ascii=False, indent=2))
     else:
         print(topic.get("id"))
     return 0
@@ -1500,73 +1696,92 @@ def edge_id(edge: dict[str, Any], index: int) -> str:
     return str(edge.get("id") or f"edge_{index + 1}")
 
 
-def graph_next_actions(ctx: TeamContext, run_id: str, from_node: str = "", ignore_waiting: bool = False) -> dict[str, Any]:
-    graph = ctx.graph()
-    if not graph:
-        raise TeamKitError("process.graph is not configured")
-    topic = load_topic(ctx, run_id)
+def _graph_node_actions(
+    ctx: TeamContext,
+    run_id: str,
+    topic: dict[str, Any],
+    node_id: str,
+    ignore_waiting: bool = False,
+) -> dict[str, Any]:
+    node = ctx.require_graph_node(node_id)
     topic_id = str(topic.get("id") or run_id)
-    current_node = from_node or str(topic.get("current_node") or ctx.graph_entry_node_id())
-    if not current_node:
-        raise TeamKitError("topic has no current node and graph has no entry node")
-    node = ctx.require_graph_node(current_node)
     result: dict[str, Any] = {
-        "runId": run_id,
-        "topicId": topic_id,
-        "currentNode": current_node,
+        "currentNode": node_id,
         "currentExpert": node.get("expert", ""),
-        "waitingOn": topic.get("waiting_on"),
         "blocked": False,
         "actions": [],
+        "openMessages": [],
     }
-    open_messages = open_messages_for_topic_node(ctx, run_id, topic_id, current_node)
+    entries = topic_active_nodes(topic)
+    entry = next((item for item in entries if str(item.get("node")) == node_id), None)
+    if entry and entry.get("status") == "waiting":
+        result["blocked"] = True
+        result["reason"] = "node is waiting for parallel predecessors"
+        result["waitingOn"] = entry.get("waiting_on", [])
+        return result
     if topic.get("status") in {"resolved", "archived"}:
         result["blocked"] = True
         result["reason"] = f"topic is {topic.get('status')}"
         return result
+    open_messages = open_messages_for_topic_node(ctx, run_id, topic_id, node_id)
     if open_messages and not ignore_waiting:
         result["blocked"] = True
         result["reason"] = "current node has unresolved required messages"
         result["openMessages"] = [msg["id"] for msg in open_messages]
         return result
-    if topic.get("status") == "waiting" and not ignore_waiting:
-        result["blocked"] = True
-        result["reason"] = "topic is waiting"
-        return result
-    if topic.get("waiting_on") and not ignore_waiting:
+    if (topic.get("status") == "waiting" or topic.get("waiting_on")) and not ignore_waiting:
         result["blocked"] = True
         result["reason"] = "topic is waiting"
         return result
     visits = topic.get("visits") if isinstance(topic.get("visits"), dict) else {}
     node_map = ctx.graph_node_map()
-    actions: list[dict[str, Any]] = []
     for index, edge in enumerate(ctx.graph_edges()):
-        if edge.get("from") != current_node:
+        if str(edge.get("from")) != node_id:
             continue
         target_id = str(edge.get("to"))
         target = node_map.get(target_id, {})
         max_visits = edge.get("max_visits")
         current_visits = int(visits.get(target_id, 0))
         allowed = not (isinstance(max_visits, int) and current_visits >= max_visits)
-        actions.append(
-            {
-                "id": edge_id(edge, index),
-                "type": "advance",
-                "from": current_node,
-                "to": target_id,
-                "expert": target.get("expert", ""),
-                "task": target.get("task", ""),
-                "when": edge.get("when", ""),
-                "relation": edge.get("relation", "next"),
-                "allowed": allowed,
-                "reason": "" if allowed else f"max_visits reached for {target_id}",
-                "visits": current_visits,
-                "maxVisits": max_visits,
-            }
-        )
-    result["actions"] = actions
-    if not actions:
+        result["actions"].append({
+            "id": edge_id(edge, index),
+            "type": "advance",
+            "from": node_id,
+            "to": target_id,
+            "expert": target.get("expert", ""),
+            "task": target.get("task", ""),
+            "when": edge.get("when", ""),
+            "relation": edge.get("relation", "next"),
+            "allowed": allowed,
+            "reason": "" if allowed else f"max_visits reached for {target_id}",
+            "visits": current_visits,
+            "maxVisits": max_visits,
+        })
+    if not result["actions"]:
         result["reason"] = "no outgoing graph edges"
+    return result
+
+
+def graph_next_actions(ctx: TeamContext, run_id: str, from_node: str = "", ignore_waiting: bool = False) -> dict[str, Any]:
+    if not ctx.graph():
+        raise TeamKitError("process.graph is not configured")
+    topic = load_topic(ctx, run_id)
+    entries = active_node_entries(topic)
+    if from_node:
+        entries = [item for item in entries if str(item.get("node")) == from_node]
+        if not entries:
+            entries = [{"node": from_node, "status": "active", "waiting_on": []}]
+    if not entries:
+        return {"runId": run_id, "topicId": str(topic.get("id") or run_id), "activeNodes": [], "blocked": False, "reason": "no_active_node"}
+    node_views = [_graph_node_actions(ctx, run_id, topic, str(item["node"]), ignore_waiting) for item in entries]
+    first = node_views[0]
+    result: dict[str, Any] = {
+        "runId": run_id,
+        "topicId": str(topic.get("id") or run_id),
+        **first,
+        "activeNodes": node_views,
+    }
+    result["blocked"] = bool(topic.get("status") in {"resolved", "archived"} or first.get("blocked"))
     return result
 
 
@@ -1598,39 +1813,132 @@ def cmd_graph_advance(args: argparse.Namespace) -> int:
     state = load_state(ctx, args.run)
     if args.edge and args.to:
         raise TeamKitError("use either --edge or --to, not both")
-    result = graph_next_actions(ctx, args.run)
+    topic = load_topic(ctx, args.run)
+    entries = active_node_entries(topic)
+    requested_node = getattr(args, "node", None) or ""
+    if requested_node:
+        if not any(str(item.get("node")) == requested_node and item.get("status") == "active" for item in entries):
+            raise TeamKitError(f"graph node is not active: {requested_node}")
+        source_node = requested_node
+    else:
+        active = [item for item in entries if item.get("status") == "active"]
+        if len(active) > 1:
+            raise TeamKitError("multiple active graph nodes; use --node")
+        if not active:
+            raise TeamKitError("no active graph node")
+        source_node = str(active[0]["node"])
+    result = graph_next_actions(ctx, args.run, source_node)
     if result.get("blocked"):
         raise TeamKitError(f"cannot advance graph: {result.get('reason')}")
     actions = result.get("actions") or []
-    if args.edge:
-        selected = next((action for action in actions if action.get("id") == args.edge), None)
+    parallel = [a for a in actions if a.get("relation") == "parallel"]
+    choices = [a for a in actions if a.get("relation") != "parallel"]
+    if args.edge or args.to:
+        selected_id = args.edge
+        if args.to:
+            matches = [action for action in actions if action.get("to") == args.to]
+            if not matches:
+                raise TeamKitError(f"graph target not available from current node: {args.to}")
+            if len(matches) > 1:
+                raise TeamKitError(f"multiple graph edges target {args.to}; use --edge")
+            selected_id = matches[0].get("id")
+        selected = next((action for action in actions if action.get("id") == selected_id), None)
         if not selected:
-            raise TeamKitError(f"graph edge not available from current node: {args.edge}")
-    elif args.to:
-        matches = [action for action in actions if action.get("to") == args.to]
-        if not matches:
-            raise TeamKitError(f"graph target not available from current node: {args.to}")
-        if len(matches) > 1:
-            raise TeamKitError(f"multiple graph edges target {args.to}; use --edge")
-        selected = matches[0]
+            raise TeamKitError(f"graph edge not available from current node: {selected_id}")
+        if selected.get("relation") == "parallel":
+            raise TeamKitError(f"edge {selected.get('id')} is relation:parallel; fork activates all parallel branches, omit --edge/--to")
+        if not selected.get("allowed"):
+            raise TeamKitError(f"graph action is not allowed: {selected.get('reason')}")
+        chosen = [selected]
+    elif choices:
+        if parallel:
+            raise TeamKitError("node has parallel branches and selectable branches; use --edge/--to to choose a non-parallel edge")
+        allowed_actions = [action for action in choices if action.get("allowed")]
+        if not allowed_actions:
+            raise TeamKitError("no allowed graph action from current node")
+        if len(allowed_actions) > 1:
+            raise TeamKitError("multiple graph actions are available; use --edge or --to")
+        chosen = [allowed_actions[0]]
+    elif len(parallel) >= 2:
+        allowed_parallel = [action for action in parallel if action.get("allowed")]
+        if not allowed_parallel:
+            print(f"warning: all parallel edges from {source_node} are blocked by max_visits", file=sys.stderr)
+            return 0
+        for action in parallel:
+            if not action.get("allowed"):
+                print(f"warning: parallel edge {action.get('id')} blocked at visits={action.get('visits')}", file=sys.stderr)
+        chosen = allowed_parallel
     else:
         allowed_actions = [action for action in actions if action.get("allowed")]
         if not allowed_actions:
             raise TeamKitError("no allowed graph action from current node")
         if len(allowed_actions) > 1:
             raise TeamKitError("multiple graph actions are available; use --edge or --to")
-        selected = allowed_actions[0]
-    if not selected.get("allowed"):
-        raise TeamKitError(f"graph action is not allowed: {selected.get('reason')}")
-
-    topic = load_topic(ctx, args.run)
-    to_node = str(selected["to"])
+        chosen = [allowed_actions[0]]
     visits = topic.setdefault("visits", {})
     if not isinstance(visits, dict):
         visits = {}
         topic["visits"] = visits
-    visits[to_node] = int(visits.get(to_node, 0)) + 1
-    topic["current_node"] = to_node
+    entries = topic_active_nodes(topic)
+    source_entry = next((item for item in entries if str(item.get("node")) == source_node), None)
+    if not source_entry:
+        raise TeamKitError(f"graph node is not active: {source_node}")
+    source_was_parallel = bool(source_entry.get("parallel_branch"))
+    source_entry["status"] = "done"
+    target_ids = []
+    join_sources: dict[str, list[str]] = {}
+    for edge in ctx.graph_edges():
+        if str(edge.get("relation") or "next") == "parallel":
+            join_sources.setdefault(str(edge.get("to")), []).append(str(edge.get("from")))
+    for selected in chosen:
+        to_node = str(selected["to"])
+        target_ids.append(to_node)
+        visits[to_node] = int(visits.get(to_node, 0)) + 1
+        target_node = ctx.require_graph_node(to_node)
+        is_join_entry = (
+            str(selected.get("relation") or "next") == "parallel"
+            and len(join_sources.get(to_node, [])) > 1
+        )
+        if is_join_entry:
+            existing = next((item for item in entries if str(item.get("node")) == to_node), None)
+            if not existing:
+                predecessors = list(join_sources.get(to_node, []))
+                if source_node not in predecessors:
+                    predecessors.append(source_node)
+                predecessors = list(dict.fromkeys(predecessors))
+                existing = {"node": to_node, "status": "waiting", "waiting_on": predecessors.copy(), "parallel_predecessors": predecessors, "activatedAt": now()}
+                entries.append(existing)
+        else:
+            existing = next((item for item in entries if str(item.get("node")) == to_node), None)
+            if existing:
+                existing.update({"status": "active", "waiting_on": []})
+            else:
+                entries.append({"node": to_node, "status": "active", "waiting_on": [], "parallel_branch": source_was_parallel, "activatedAt": now()})
+        if len(chosen) > 1:
+            existing = next((item for item in entries if str(item.get("node")) == to_node), None)
+            if existing:
+                existing["parallel_branch"] = True
+    # Leave events satisfy any join waiting on this source. Join becomes active eagerly.
+    join_activated = False
+    # Join predecessor satisfaction is based on completed branch nodes, not on
+    # the transient source node that just emitted the leave event.
+    completed_nodes = {str(item.get("node")) for item in entries if item.get("status") == "done"}
+    completed_nodes.add(source_node)
+    for item in list(entries):
+        if item.get("status") != "waiting":
+            continue
+        waiting_on = [str(value) for value in item.get("waiting_on", []) if str(value) not in completed_nodes]
+        item["waiting_on"] = waiting_on
+        if not waiting_on:
+            item["status"] = "active"
+            item["waiting_on"] = []
+            join_activated = True
+    if join_activated:
+        entries = [candidate for candidate in entries if candidate.get("status") != "done"]
+    elif len(chosen) == 1 and not source_was_parallel:
+        entries = [candidate for candidate in entries if candidate is not source_entry]
+    save_active_nodes(topic, entries)
+    to_node = target_ids[0] if len(target_ids) == 1 else ""
     coordinator = ctx.process().get("coordinator") or ctx.process().get("lead") or ""
     topic["responsible"] = coordinator or str(selected.get("expert") or "")
     topic["status"] = "active"
@@ -1638,7 +1946,8 @@ def cmd_graph_advance(args: argparse.Namespace) -> int:
         topic["summary"] = optional_text_from_option(args.summary, args.summary_file)
     topic["version"] = int(topic.get("version") or 1) + 1
     save_topic(ctx, args.run, topic)
-    state["active_node"] = to_node
+    state["active_node"] = topic.get("current_node", "")
+    state["active_nodes"] = topic.get("active_nodes", [])
     save_state(ctx, args.run, state)
     append_jsonl(
         ctx.events_path(args.run),
@@ -1647,16 +1956,27 @@ def cmd_graph_advance(args: argparse.Namespace) -> int:
             args.run,
             actor=args.by or "",
             topicId=topic.get("id"),
-            edgeId=selected.get("id"),
-            fromNode=selected.get("from"),
-            toNode=to_node,
-            expert=selected.get("expert"),
+            edgeId=(chosen[0].get("id") if len(chosen) == 1 else [item.get("id") for item in chosen]),
+            fromNode=source_node,
+            toNode=(to_node or target_ids),
+            expert=(chosen[0].get("expert") if len(chosen) == 1 else [item.get("expert") for item in chosen]),
         ),
     )
     if args.json:
-        print(json.dumps(topic_status_view(ctx, args.run), ensure_ascii=False, indent=2))
+        response = topic_status_view(ctx, args.run)
+        next_view = graph_next_actions(ctx, args.run)
+        response["activeNodes"] = next_view.get("activeNodes", [])
+        if len(response["activeNodes"]) == 1:
+            next_actions = response["activeNodes"][0].get("actions") or []
+            next_action = next((item for item in next_actions if item.get("allowed")), None)
+            response["nextExpert"] = next_action.get("expert") if next_action else None
+            response["nextTask"] = next_action.get("task") if next_action else None
+        else:
+            response["nextExpert"] = None
+            response["nextTask"] = None
+        print(json.dumps(response, ensure_ascii=False, indent=2))
     else:
-        print(to_node)
+        print(to_node or json.dumps(topic.get("active_nodes", []), ensure_ascii=False))
     return 0
 
 
@@ -1680,7 +2000,14 @@ def default_topic_and_node(ctx: TeamContext, run_id: str, topic_arg: str | None,
     if topic_path.exists():
         topic = load_yaml(topic_path)
         topic_id = topic_arg or str(topic.get("id") or run_id)
-        node_id = node_arg or str(topic.get("current_node") or "")
+        if node_arg:
+            node_id = node_arg
+        else:
+            entries = active_node_entries(topic)
+            sender_candidates = entries
+            node_id = str(topic.get("current_node") or "")
+            if len(sender_candidates) == 1:
+                node_id = str(sender_candidates[0].get("node") or node_id)
     if node_id:
         ctx.require_graph_node(node_id)
     return topic_id, node_id
@@ -1699,6 +2026,20 @@ def cmd_msg_send(args: argparse.Namespace) -> int:
         )
     response = args.response or ctx.response_mode_for(args.from_expert, args.to)
     topic_id, node_id = default_topic_and_node(ctx, args.run, args.topic, args.node)
+    if not args.node:
+        topic = load_topic(ctx, args.run)
+        candidates = [
+            str(item.get("node"))
+            for item in topic_active_nodes(topic)
+            if item.get("node") and str(ctx.graph_node_map().get(str(item.get("node")), {}).get("expert")) == args.from_expert
+        ]
+        if len(candidates) == 1:
+            node_id = candidates[0]
+        elif len(topic_active_nodes(topic)) > 1:
+            all_nodes = ", ".join(str(item.get("node")) for item in topic_active_nodes(topic))
+            raise TeamKitError(
+                f"sender {args.from_expert} does not map uniquely to a graph node; candidates: {all_nodes}; use --node"
+            )
     msg = {
         "id": message_id(),
         "runId": args.run,
@@ -2212,6 +2553,13 @@ def cmd_result_publish(args: argparse.Namespace) -> int:
             topic = load_topic(ctx, args.run)
             if topic.get("status") == "waiting":
                 raise TeamKitError("cannot publish final result while topic is waiting")
+            entries = topic_active_nodes(topic)
+            if not entries:
+                raise TeamKitError("run state is invalid: no active graph nodes; inspect events.jsonl")
+            unfinished = [item for item in entries if item.get("status") in {"active", "waiting"}]
+            if len(unfinished) > 1:
+                labels = ", ".join(str(item.get("node")) for item in unfinished)
+                raise TeamKitError(f"graph still has unfinished branches ({labels}); cannot publish final result")
     source = resolve_input_file(ctx, args.file, args.run)
     if not source.exists():
         raise TeamKitError(f"result file not found: {source}")
@@ -2256,6 +2604,175 @@ def cmd_result_publish(args: argparse.Namespace) -> int:
         ),
     )
     print(record["id"])
+    return 0
+
+
+def batch_root(ctx: TeamContext) -> Path:
+    return ctx.team_base("_batch") / "batches"
+
+
+def batch_manifest_path(ctx: TeamContext, batch_id: str) -> Path:
+    return batch_root(ctx) / batch_id / "manifest.json"
+
+
+def load_batch_manifest(ctx: TeamContext, batch_id: str) -> tuple[Path, dict[str, Any]]:
+    path = batch_manifest_path(ctx, batch_id)
+    if not path.exists():
+        raise TeamKitError(f"batch not found: {batch_id}")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or not isinstance(data.get("cases"), list):
+        raise TeamKitError(f"invalid batch manifest: {path}")
+    return path, data
+
+
+def batch_case_summary(ctx: TeamContext, case: dict[str, Any]) -> dict[str, Any]:
+    summary = {key: case.get(key, "") for key in ("caseId", "inputRef", "status", "runId")}
+    run_id = str(case.get("runId") or "")
+    if case.get("status") == "running" and run_id:
+        try:
+            state = load_state(ctx, run_id)
+            node = state.get("active_node") or ""
+            node_data = ctx.graph_node_map().get(str(node), {})
+            summary["expert"] = node_data.get("expert", "")
+        except TeamKitError:
+            summary["expert"] = ""
+    return summary
+
+
+def batch_payload(ctx: TeamContext, data: dict[str, Any], selected: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    cases = data.get("cases", [])
+    counts = {status: sum(1 for case in cases if case.get("status") == status) for status in ("pending", "running", "done", "failed")}
+    running_by_expert: dict[str, int] = {}
+    for case in cases:
+        summary = batch_case_summary(ctx, case)
+        if case.get("status") == "running" and summary.get("expert"):
+            expert = str(summary["expert"])
+            running_by_expert[expert] = running_by_expert.get(expert, 0) + 1
+    result = {
+        "batchId": data.get("batchId"),
+        "teamId": data.get("teamId"),
+        "counts": counts,
+        "runningByExpert": running_by_expert,
+    }
+    if selected is not None:
+        result["cases"] = [batch_case_summary(ctx, case) for case in selected]
+    return result
+
+
+def cmd_batch_init(args: argparse.Namespace) -> int:
+    ctx = TeamContext(Path(args.team))
+    cases_dir = Path(args.cases_dir).expanduser().resolve()
+    if not cases_dir.is_dir():
+        raise TeamKitError(f"cases directory not found: {cases_dir}")
+    label = kebab_case(args.batch, "batch")
+    team_id = str((ctx.team.get("team", {}) or {}).get("id") or ctx.root.name)
+    batch_id = f"{team_id}@{label}"
+    path = batch_manifest_path(ctx, batch_id)
+    if path.exists() and not args.force:
+        raise TeamKitError(f"batch already exists: {batch_id}; use --force")
+    cases = []
+    for item in sorted(cases_dir.iterdir()):
+        if not item.is_file() or item.name.startswith("."):
+            continue
+        cases.append({"caseId": item.stem, "inputRef": str(item), "status": "pending", "runId": "", "dispatchedAt": "", "updatedAt": now()})
+    data = {"manifestVersion": "teamkit.batch.v0.1", "batchId": batch_id, "teamId": team_id, "label": label, "casesDir": str(cases_dir), "createdAt": now(), "updatedAt": now(), "cases": cases}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with batch_lock(path.parent):
+        write_json(path, data)
+    print(json.dumps({"batchId": batch_id, "caseCount": len(cases)}, ensure_ascii=False) if args.json else batch_id)
+    return 0
+
+
+def cmd_batch_next(args: argparse.Namespace) -> int:
+    ctx = TeamContext(Path(args.team))
+    path, data = load_batch_manifest(ctx, args.batch)
+    limit = max(1, int(args.max))
+    selected: list[dict[str, Any]] = []
+    with batch_lock(path.parent):
+        # Re-read while holding the lock: selection and state transition are atomic.
+        data = json.loads(path.read_text(encoding="utf-8"))
+        for case in data.get("cases", []):
+            if case.get("status") == "pending" and len(selected) < limit:
+                case["status"] = "running"
+                case["dispatchedAt"] = now()
+                case["updatedAt"] = case["dispatchedAt"]
+                selected.append(case)
+        data["updatedAt"] = now()
+        write_json(path, data)
+    payload = batch_payload(ctx, data, selected)
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_batch_update(args: argparse.Namespace) -> int:
+    ctx = TeamContext(Path(args.team))
+    path, data = load_batch_manifest(ctx, args.batch)
+    if args.status not in {"pending", "running", "done", "failed"}:
+        raise TeamKitError("invalid batch status")
+    with batch_lock(path.parent):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        case = next((item for item in data.get("cases", []) if item.get("caseId") == args.case), None)
+        if case is None:
+            raise TeamKitError(f"case not found: {args.case}")
+        case["status"] = args.status
+        if args.run is not None:
+            case["runId"] = args.run
+        case["updatedAt"] = now()
+        data["updatedAt"] = now()
+        write_json(path, data)
+    print(args.case)
+    return 0
+
+
+def cmd_batch_status(args: argparse.Namespace) -> int:
+    ctx = TeamContext(Path(args.team))
+    _, data = load_batch_manifest(ctx, args.batch)
+    payload = batch_payload(ctx, data)
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        counts = payload["counts"]
+        print(f"{payload['batchId']} pending={counts['pending']} running={counts['running']} done={counts['done']} failed={counts['failed']}")
+        for expert, count in payload["runningByExpert"].items():
+            print(f"{expert}: {count}")
+    return 0
+
+
+def cmd_batch_recover(args: argparse.Namespace) -> int:
+    if args.stale is None:
+        raise TeamKitError("batch recover requires explicit --stale <minutes>")
+    ctx = TeamContext(Path(args.team))
+    path, data = load_batch_manifest(ctx, args.batch)
+    cutoff = datetime.now(timezone.utc).timestamp() - float(args.stale) * 60
+    recovered = []
+    with batch_lock(path.parent):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        for case in data.get("cases", []):
+            if case.get("status") != "running":
+                continue
+            stamp = str(case.get("updatedAt") or case.get("dispatchedAt") or "")
+            try:
+                timestamp = datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                timestamp = 0
+            if timestamp > cutoff:
+                continue
+            run_id = str(case.get("runId") or "")
+            if run_id:
+                try:
+                    state = load_state(ctx, run_id)
+                    if state.get("status") == "completed":
+                        case["status"] = "done"
+                        case["updatedAt"] = now()
+                        continue
+                except TeamKitError:
+                    pass
+            case["status"] = "pending"
+            case["updatedAt"] = now()
+            recovered.append(case.get("caseId"))
+        data["updatedAt"] = now()
+        write_json(path, data)
+    print(json.dumps({"batchId": args.batch, "recovered": recovered}, ensure_ascii=False) if args.json else "\n".join(str(item) for item in recovered))
     return 0
 
 
@@ -2354,6 +2871,9 @@ def workbuddy_lead_agent_id(package_name: str) -> str:
 
 def workbuddy_team_description(ctx: TeamContext) -> str:
     team = ctx.team.get("team", {}) or {}
+    description = str(team.get("description") or "").strip()
+    if description:
+        return description
     purpose = str(team.get("purpose") or "")
     if purpose:
         return f"WorkBuddy package for an Agents TeamKit team: {purpose}"
@@ -2366,6 +2886,8 @@ def workbuddy_display_description_zh() -> str:
 
 def workbuddy_display_description_en(ctx: TeamContext) -> str:
     team = ctx.team.get("team", {}) or {}
+    if team.get("description"):
+        return str(team["description"])
     name = str(team.get("name") or team.get("id") or "business team")
     return f"Runs {name} with Agents TeamKit graph, topic, message, context, artifact, and final result commands."
 
@@ -2387,33 +2909,22 @@ Use this skill when operating the bundled `{package_name}` expert team.
 Stable coordination actions must go through the bundled TeamKit command wrapper:
 
 ```bash
-python3 scripts/teamkit.py <teamkit arguments>
+{{{{TEAMKIT_SCRIPT}}}} <teamkit arguments>
 ```
 
 The wrapper defaults `--team` to the packaged `teamkit-workspace/team.yaml`. Use `--team <path>` only when the user explicitly wants to operate another TeamKit team definition.
 
 ## Common Flow
 
-1. Validate the packaged team:
-   `python3 scripts/teamkit.py team validate`
-2. Initialize a task run:
-   `python3 scripts/teamkit.py run init --run <task-id>`
-3. Inspect coordination state:
-   `python3 scripts/teamkit.py topic status --run <task-id>`
-   `python3 scripts/teamkit.py graph next --run <task-id>`
-4. Inspect or add managed context:
-   `python3 scripts/teamkit.py context list --run <task-id>`
-   `python3 scripts/teamkit.py context add --run <task-id> --file <path> --scope team`
-5. Advance a graph edge only when the coordinator has selected it:
-   `python3 scripts/teamkit.py graph advance --run <task-id> --to <node-id> --by <expert-id>`
-6. Use `msg`, `context`, `human`, `artifact`, and `result` commands for collaboration, context sharing, human input, deliverables, and final output.
+The wrapper supports `team validate`, `run init`, `run status`, `topic status`, `graph next`, `graph advance`, `msg`, `context`, `human`, `artifact`, `result`, and the batch ledger commands. `run status` includes graph actions, active nodes, and next expert/task information.
 
 Do not edit `topic.yaml`, `messages.jsonl`, `events.jsonl`, `context-items.jsonl`, `human-review.jsonl`, `state.yaml`, or artifact index files directly.
 """
 
 
-def workbuddy_teamkit_wrapper_text() -> str:
-    return """#!/usr/bin/env python3
+def workbuddy_teamkit_wrapper_text(team_id: str = "") -> str:
+    marker = f".workbuddy/teamkit-runs/{team_id}" if team_id else ".workbuddy/teamkit-runs"
+    return f"""#!/usr/bin/env python3
 from __future__ import annotations
 
 import os
@@ -2435,6 +2946,7 @@ def teamkit_python(plugin_root: Path) -> str:
 def main() -> int:
     script = Path(__file__).resolve()
     plugin_root = script.parents[3]
+    os.environ.setdefault("TEAMKIT_RUNS_DIR", str(Path.home() / "{marker}"))
     teamkit_cli = plugin_root / "vendor" / "teamkit" / "teamkit" / "cli.py"
     team_file = Path(os.environ.get("TEAMKIT_TEAM_FILE", plugin_root / "teamkit-workspace" / "team.yaml"))
     args = list(sys.argv[1:])
@@ -2523,9 +3035,15 @@ def workbuddy_lead_markdown(ctx: TeamContext, package_name: str, lead_id: str, m
         for node in ctx.graph_nodes()
     ]
     graph_edges = [
-        f"- `{edge.get('from')}` -> `{edge.get('to')}` when {edge.get('when', '')}"
+        f"- `{edge.get('from')}` -> `{edge.get('to')}` ({edge.get('relation', 'next')}) when {edge.get('when', '')}"
         for edge in ctx.graph_edges()
     ]
+    mode = ctx.communication_mode()
+    allowed_pairs = []
+    for sender in ctx.experts:
+        for recipient in ctx.experts:
+            if sender != recipient and ctx.communication_allowed(sender, recipient):
+                allowed_pairs.append(f"{sender} -> {recipient}")
     return (
         workbuddy_agent_frontmatter(
             lead_id,
@@ -2539,20 +3057,16 @@ def workbuddy_lead_markdown(ctx: TeamContext, package_name: str, lead_id: str, m
         + f"""
 # {team_name} - 主理人
 
-你是这个 WorkBuddy Agent 团队的主理人，负责把用户任务变成可执行的 TeamKit run，并调度成员按 Topic、Graph、Message 和 Context Item 稳定协作。
+你是这个 WorkBuddy Agent 团队的主理人，负责使用 TeamKit 协议记录可执行的 run、Topic、Graph、Message 和 Context Item。
 
 ## 团队成员
 
 {chr(10).join(rows)}
 
-## 标准工作流程
+## 协议能力
 
-1. 先用 `python3 scripts/teamkit.py team validate` 确认团队定义有效。
-2. 为用户任务创建 run：`python3 scripts/teamkit.py run init --run <task-id>`。
-3. 用 `topic status` 和 `graph next` 查看当前节点与可选动作。
-4. 按业务需要调度对应成员，成员完成后必须 SendMessage 回传结果。
-5. 只有主理人或被明确授权者可以使用 `graph advance` 或 `topic update` 推进共享协作状态。
-6. 所有上下文、人工确认、成员产出和最终结果都通过 TeamKit 命令记录。
+可用命令包括 `team validate`、`run init/status`、`topic status/update`、`graph next/advance`、`msg`、`context`、`human`、`artifact`、`result` 以及 `batch init/next/update/status/recover`。账本文件只能由 TeamKit 命令修改；只有主理人或被明确授权者可以使用 `graph advance` 或 `topic update` 推进共享状态。
+`run status` 聚合当前 Graph actions、active nodes、next expert/task、消息、Context、artifact 和 human review 信息；`graph advance` 返回推进后的下一步信息。
 
 ## Graph Nodes
 
@@ -2562,12 +3076,12 @@ def workbuddy_lead_markdown(ctx: TeamContext, package_name: str, lead_id: str, m
 
 {chr(10).join(graph_edges) if graph_edges else "- 未配置 process.graph edges。"}
 
-## 协作铁律
+## 通信事实
 
-- 必须走正式的团队协作流程，不得由主理人代写成员专业产出。
-- 跨成员信息流先回传主理人，再由主理人决定是否转交下一阶段。
-- 不直接编辑 TeamKit ledgers 或 `topic.yaml`、`state.yaml`。
-- 最终结果发布前，必须确认 required messages、human requests 和 Topic waiting 状态均已闭环。
+- communication.mode: `{mode}`
+- 图节点与边定义了当前团队的流程事实；并行边使用 `relation: parallel`，汇聚节点可声明 `join: all`。
+- 当前 core 派生的可通信专家对：{", ".join(allowed_pairs) if allowed_pairs else "（无额外许可）"}
+- 消息 reply/close、required message、human review 和 Topic waiting 的状态由协议账本记录。
 
 ## Coordinator
 
@@ -2600,12 +3114,12 @@ def workbuddy_member_markdown(ctx: TeamContext, package_name: str, expert_id: st
 
 {profile.strip()}
 
-## WorkBuddy 回传要求
+## TeamKit 能力
 
-- 分析完成后，必须通过 SendMessage 将完整结果回传给主理人。
-- 输出必须包含事实、判断、稳定引用、未解决问题和是否需要人工介入或裁决。
-- 如需读取或补充标准文件/任务资料，先查看 `python3 scripts/teamkit.py context list ...`，被授权时使用 `context add` 追加受管 Context Item。
-- 不维护全局流程副本；以主理人提供的 Topic、Graph、Message 状态为准。
+- 可使用 `{{{{TEAMKIT_SCRIPT}}}} run status` 查看聚合状态，并按团队通信许可使用 `msg send/reply/close`。
+- 可使用 `{{{{TEAMKIT_SCRIPT}}}} context list` 读取已授权 Context Item，使用 `context add` 追加受管资料。
+- 可使用 `artifact publish` 发布可引用产出；消息正文应保持简洁并通过 `artifactRefs` 引用文件。
+- 不直接编辑 TeamKit ledgers；以 Topic、Graph、Message 状态为准。
 """
     )
 
@@ -2627,7 +3141,7 @@ Use this skill when the user wants to validate, compile, export, or install a Te
 Run TeamKit through the bundled wrapper:
 
 ```bash
-python3 scripts/teamkit.py <teamkit arguments>
+{{TEAMKIT_SCRIPT}} <teamkit arguments>
 ```
 
 This workbench package is not bound to one team. Always pass `--team <path-to-team.yaml>` for team-specific commands.
@@ -2635,13 +3149,13 @@ This workbench package is not bound to one team. Always pass `--team <path-to-te
 ## Common Commands
 
 ```bash
-python3 scripts/teamkit.py --team <team-dir>/team.yaml team validate
-python3 scripts/teamkit.py --team <team-dir>/team.yaml team context list
-python3 scripts/teamkit.py --team <team-dir>/team.yaml team context add --id <context-id> --name "<display-name>" --file <uploaded-file> --scope agents --visible-to <expert-id>
-python3 scripts/teamkit.py --team <team-dir>/team.yaml team context assign --context <context-id> --visible-to <expert-id>
-python3 scripts/teamkit.py --team <team-dir>/team.yaml team compile --out <team-dir>/build/execution-plan.json
-python3 scripts/teamkit.py --team <team-dir>/team.yaml workbuddy export --out <team-dir>/build/workbuddy --force
-python3 scripts/teamkit.py workbuddy install --package <team-dir>/build/workbuddy/<package-name> --force
+{{TEAMKIT_SCRIPT}} --team <team-dir>/team.yaml team validate
+{{TEAMKIT_SCRIPT}} --team <team-dir>/team.yaml team context list
+{{TEAMKIT_SCRIPT}} --team <team-dir>/team.yaml team context add --id <context-id> --name "<display-name>" --file <uploaded-file> --scope agents --visible-to <expert-id>
+{{TEAMKIT_SCRIPT}} --team <team-dir>/team.yaml team context assign --context <context-id> --visible-to <expert-id>
+{{TEAMKIT_SCRIPT}} --team <team-dir>/team.yaml team compile --out <team-dir>/build/execution-plan.json
+{{TEAMKIT_SCRIPT}} --team <team-dir>/team.yaml workbuddy export --out <team-dir>/build/workbuddy --force
+{{TEAMKIT_SCRIPT}} workbuddy install --package <team-dir>/build/workbuddy/<package-name> --force
 ```
 
 Use `context`, `topic`, `graph`, `msg`, `human`, `artifact`, and `result` commands only after a concrete team run exists.
@@ -2786,7 +3300,8 @@ def export_workbuddy_package(ctx: TeamContext, out_root: Path, package_name: str
     (skill_dir / "scripts").mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(workbuddy_runtime_skill_text(package_name), encoding="utf-8")
     wrapper = skill_dir / "scripts" / "teamkit.py"
-    wrapper.write_text(workbuddy_teamkit_wrapper_text(), encoding="utf-8")
+    team_id = str((ctx.team.get("team", {}) or {}).get("id") or package_name)
+    wrapper.write_text(workbuddy_teamkit_wrapper_text(team_id), encoding="utf-8")
     wrapper.chmod(0o755)
 
     workspace = package_dir / "teamkit-workspace"
@@ -2795,8 +3310,6 @@ def export_workbuddy_package(ctx: TeamContext, out_root: Path, package_name: str
     copy_if_exists(ctx.root / "experts", workspace / "experts")
     copy_if_exists(ctx.root / "references", workspace / "references")
     copy_if_exists(ctx.root / "contexts", workspace / "contexts")
-    (workspace / "runs").mkdir(exist_ok=True)
-    (workspace / "runs" / ".gitkeep").touch()
 
     vendor_teamkit = package_dir / "vendor" / "teamkit" / "teamkit"
     vendor_teamkit.mkdir(parents=True)
@@ -2820,9 +3333,9 @@ def export_workbuddy_package(ctx: TeamContext, out_root: Path, package_name: str
     ]
     plugin = {
         "name": package_name,
-        "version": "0.1.3",
+        "version": __version__,
         "description": workbuddy_team_description(ctx),
-        "author": {"name": "Agents TeamKit", "email": "teamkit@example.local"},
+        "author": {"name": "Agents TeamKit contributors", "url": "https://github.com/Jaulous/agents-teamkit"},
         "agents": agents,
         "skills": ["./skills/teamkit-runtime"],
         "expertType": "team",
@@ -2888,8 +3401,9 @@ def export_workbuddy_package(ctx: TeamContext, out_root: Path, package_name: str
         ],
     }
     write_json(package_dir / ".codebuddy-plugin" / "plugin.json", plugin)
+    readme_text = str(team.get("readme") or "")
     (package_dir / "README.md").write_text(
-        f"""# {team_name}
+        readme_text or f"""# {team_name}
 
 This is a WorkBuddy Team expert package generated from Agents TeamKit.
 
@@ -2957,9 +3471,9 @@ def export_workbuddy_init_package(
 
     plugin = {
         "name": package_name,
-        "version": "0.1.3",
+        "version": __version__,
         "description": "Agents TeamKit workbench package for creating, managing, validating, exporting, and improving multi-agent teams for WorkBuddy trial use.",
-        "author": {"name": "Agents TeamKit", "email": "teamkit@example.local"},
+        "author": {"name": "Agents TeamKit contributors", "url": "https://github.com/Jaulous/agents-teamkit"},
         "agents": [f"./agents/{agent_id}.md"],
         "skills": [
             "./skills/agent-team-builder",
@@ -3027,7 +3541,7 @@ Use it to create or update a user-owned multi-agent team, manage Context Item vi
 def cmd_workbuddy_export(args: argparse.Namespace) -> int:
     ctx = TeamContext(Path(args.team))
     package_name = workbuddy_package_name(ctx, args.name)
-    out_root = Path(args.out or "build/workbuddy")
+    out_root = Path(args.out).expanduser() if args.out else teamkit_home() / "build" / "workbuddy"
     package_dir = export_workbuddy_package(ctx, out_root, package_name, args.force)
     if args.json:
         print(json.dumps({"packageDir": str(package_dir), "packageName": package_name}, ensure_ascii=False, indent=2))
@@ -3037,7 +3551,7 @@ def cmd_workbuddy_export(args: argparse.Namespace) -> int:
 
 
 def cmd_workbuddy_export_init(args: argparse.Namespace) -> int:
-    out_root = Path(args.out or "build/workbuddy")
+    out_root = Path(args.out).expanduser() if args.out else teamkit_home() / "build" / "workbuddy"
     package_dir = export_workbuddy_init_package(
         out_root,
         args.name or "agents-teamkit-workbench",
@@ -3183,6 +3697,28 @@ def ensure_workbuddy_runtime_env(package_dir: Path) -> Path | None:
     return runtime_dir
 
 
+def render_installed_teamkit_script_paths(target: Path) -> None:
+    wrappers = [path for path in target.glob("skills/*/scripts/teamkit.py") if path.is_file()]
+    if not wrappers:
+        return
+    replacement = str(wrappers[0].resolve())
+    # Render generated prompt-bearing files only. Vendored cli.py contains the
+    # template source itself and must remain portable for future exports.
+    roots = [target / "agents", target / "skills"]
+    for root in roots:
+        if not root.exists():
+            continue
+        for path in root.rglob("*"):
+            if not path.is_file() or path in wrappers:
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
+            if "{{TEAMKIT_SCRIPT}}" in text:
+                atomic_write_text(path, text.replace("{{TEAMKIT_SCRIPT}}", replacement))
+
+
 def cmd_workbuddy_install(args: argparse.Namespace) -> int:
     source = Path(args.package).expanduser().resolve()
     if not source.exists() or not source.is_dir():
@@ -3194,9 +3730,15 @@ def cmd_workbuddy_install(args: argparse.Namespace) -> int:
     if target.exists():
         if not args.force:
             raise TeamKitError(f"WorkBuddy package already installed: {target}; use --force")
+        legacy_runs = target / "teamkit-workspace" / "runs"
+        if legacy_runs.exists():
+            retained = [item for item in legacy_runs.iterdir() if item.name != ".gitkeep"]
+            if retained:
+                print(f"warning: {legacy_runs} contains runtime data and will be deleted", file=sys.stderr)
         shutil.rmtree(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(source, target)
+    render_installed_teamkit_script_paths(target)
     runtime_dir = ensure_workbuddy_runtime_env(target)
     manifest_path = register_workbuddy_package(target, config_dir, args.session_id or "teamkit-local-install")
     result = {
@@ -3219,6 +3761,11 @@ def cmd_workbuddy_uninstall(args: argparse.Namespace) -> int:
     target = workbuddy_plugins_dir(config_dir) / package_name
     existed = target.exists()
     if existed:
+        legacy_runs = target / "teamkit-workspace" / "runs"
+        if legacy_runs.exists():
+            retained = [item for item in legacy_runs.iterdir() if item.name != ".gitkeep"]
+            if retained:
+                print(f"warning: {legacy_runs} contains runtime data and will be deleted", file=sys.stderr)
         shutil.rmtree(target)
     elif not args.force:
         raise TeamKitError(f"WorkBuddy package is not installed: {package_name}; use --force to ignore")
@@ -3243,6 +3790,11 @@ def build_parser() -> argparse.ArgumentParser:
         description="Deterministic command layer for TeamKit. Pass --team PATH anywhere; default is team.yaml.",
     )
     sub = parser.add_subparsers(dest="area", required=True)
+
+    home = sub.add_parser("home")
+    home.add_argument("--run")
+    home.add_argument("--json", action="store_true")
+    home.set_defaults(func=cmd_home)
 
     team = sub.add_parser("team")
     team_sub = team.add_subparsers(dest="command", required=True)
@@ -3335,6 +3887,7 @@ def build_parser() -> argparse.ArgumentParser:
     graph_next.set_defaults(func=cmd_graph_next)
     graph_advance = graph_sub.add_parser("advance")
     graph_advance.add_argument("--run", required=True)
+    graph_advance.add_argument("--node")
     graph_advance.add_argument("--edge")
     graph_advance.add_argument("--to")
     graph_advance.add_argument("--summary")
@@ -3470,6 +4023,34 @@ def build_parser() -> argparse.ArgumentParser:
     result_publish.add_argument("--force", action="store_true")
     result_publish.set_defaults(func=locked_run_command(cmd_result_publish))
 
+    batch = sub.add_parser("batch")
+    batch_sub = batch.add_subparsers(dest="command", required=True)
+    batch_init_parser = batch_sub.add_parser("init")
+    batch_init_parser.add_argument("--batch", required=True)
+    batch_init_parser.add_argument("--cases-dir", required=True)
+    batch_init_parser.add_argument("--force", action="store_true")
+    batch_init_parser.add_argument("--json", action="store_true")
+    batch_init_parser.set_defaults(func=cmd_batch_init)
+    batch_next_parser = batch_sub.add_parser("next")
+    batch_next_parser.add_argument("--batch", required=True)
+    batch_next_parser.add_argument("--max", type=int, default=1)
+    batch_next_parser.set_defaults(func=cmd_batch_next)
+    batch_update_parser = batch_sub.add_parser("update")
+    batch_update_parser.add_argument("--batch", required=True)
+    batch_update_parser.add_argument("--case", required=True)
+    batch_update_parser.add_argument("--status", required=True)
+    batch_update_parser.add_argument("--run")
+    batch_update_parser.set_defaults(func=cmd_batch_update)
+    batch_status_parser = batch_sub.add_parser("status")
+    batch_status_parser.add_argument("--batch", required=True)
+    batch_status_parser.add_argument("--json", action="store_true")
+    batch_status_parser.set_defaults(func=cmd_batch_status)
+    batch_recover_parser = batch_sub.add_parser("recover")
+    batch_recover_parser.add_argument("--batch", required=True)
+    batch_recover_parser.add_argument("--stale", type=float)
+    batch_recover_parser.add_argument("--json", action="store_true")
+    batch_recover_parser.set_defaults(func=cmd_batch_recover)
+
     workbuddy = sub.add_parser("workbuddy")
     workbuddy_sub = workbuddy.add_subparsers(dest="command", required=True)
     workbuddy_detect = workbuddy_sub.add_parser("detect")
@@ -3477,13 +4058,13 @@ def build_parser() -> argparse.ArgumentParser:
     workbuddy_detect.add_argument("--json", action="store_true")
     workbuddy_detect.set_defaults(func=cmd_workbuddy_detect)
     workbuddy_export = workbuddy_sub.add_parser("export")
-    workbuddy_export.add_argument("--out", default="build/workbuddy")
+    workbuddy_export.add_argument("--out")
     workbuddy_export.add_argument("--name")
     workbuddy_export.add_argument("--force", action="store_true")
     workbuddy_export.add_argument("--json", action="store_true")
     workbuddy_export.set_defaults(func=cmd_workbuddy_export)
     workbuddy_export_init = workbuddy_sub.add_parser("export-init")
-    workbuddy_export_init.add_argument("--out", default="build/workbuddy")
+    workbuddy_export_init.add_argument("--out")
     workbuddy_export_init.add_argument("--name")
     workbuddy_export_init.add_argument("--force", action="store_true")
     workbuddy_export_init.add_argument("--json", action="store_true")

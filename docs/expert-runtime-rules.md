@@ -9,7 +9,7 @@ Use TeamKit commands for stable actions:
 - Send messages with `teamkit msg send`.
 - Reply with `teamkit msg reply`.
 - Close messages with `teamkit msg close`.
-- Inspect the current coordination state with `teamkit topic status` and `teamkit graph next`.
+- Inspect the current coordination state with `teamkit run status`; it aggregates Topic, Graph actions, active nodes, next expert/task, messages, contexts, artifacts, and human reviews. `topic status` and `graph next` remain available when a focused view is needed.
 - Inspect visible managed context with `teamkit context list`.
 - Add managed context with `teamkit context add` only when the user, coordinator, or team definition authorizes it.
 - Advance the graph with `teamkit graph advance` only when you are the coordinator or have been explicitly assigned that responsibility.

@@ -29,9 +29,9 @@ teamkit result publish ...
 ## Workspace Layout
 
 ```text
-runs/run-001/
+<run-base>/run-001/
   brief.md
-  state.yaml
+state.yaml
   topic.yaml
   contexts/
   shared/
@@ -52,6 +52,8 @@ runs/run-001/
   decision-log.md
   final-report.md
 ```
+
+The run base is resolved once for all run files. See [directory-model.md](directory-model.md).
 
 ## File Ownership
 
@@ -153,13 +155,14 @@ run_id: run-001
 status: running
 process_mode: graph
 active_node: policy_review
+active_nodes:
+  - node: policy_review
+    status: active
+    waiting_on: []
 final_report_owner: decision
 open_messages:
   - msg_003
-locked_files:
-  final-report.md:
-    owner: decision
-    reason: drafting final report
+final_result: null
 ```
 
 ## Evidence Discipline

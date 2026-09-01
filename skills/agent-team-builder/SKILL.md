@@ -78,7 +78,7 @@ For each agent, define:
 
 Write each profile as `experts/<expert-id>.md`.
 
-Include the runtime rules from `docs/expert-runtime-rules.md` or summarize them in a `TeamKit Rules` section. Experts must use commands for messages, artifacts, and final results.
+Include the runtime rules from `docs/expert-runtime-rules.md` or summarize them in a `TeamKit Rules` section. Experts must use commands for messages, artifacts, and final results. When a phase is genuinely parallel, generate member-targeted nodes connected with explicit `relation: parallel` edges and a `join: all` node; keep choice edges unmarked. Communication defaults for fan-out may be `optional`, while required responses remain explicit at handoff or gate points.
 Also include commands for graph/topic inspection, managed context inspection, and human input when the expert may perform those actions.
 Only the coordinator or an explicitly assigned expert should advance the graph or update shared Topic state.
 
@@ -110,13 +110,13 @@ Recommend visibility from business responsibility: give a document to every expe
 
 ### 5. Define Flow
 
-Use `process.graph` as the v0.1 flow model.
+Use `process.graph` as the TeamKit flow model.
 
 A simple fixed sequence is a straight graph. A more complex collaboration can
 branch as an alternative route, loop, or return work to an earlier expert. Do not create `main_steps`;
 each business step should be represented as a graph node.
 
-TeamKit v0.1 has one current graph node per run. Do not model parallel fan-out/fan-in or join semantics in `process.graph`. If several experts should review the same phase, model one coordinator-owned graph node for that phase and have the coordinator request specialist outputs through messages, or model the reviews as an explicit sequence.
+TeamKit retains single-node behavior by default. For genuinely parallel work, use member-targeted nodes, explicit `relation: parallel` edges, and a `join: all` target. Leave choice edges unmarked; do not mix parallel and choice edges from one source unless the definition intentionally accepts that the parallel path has no implicit activation command.
 
 Define communication rules only when they add permissions or business conditions that are not already obvious from graph edges:
 

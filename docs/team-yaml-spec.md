@@ -121,10 +121,13 @@ alternative route, loop, or return work to an earlier expert.
 The graph remains lightweight. It defines allowed movement, not a workflow engine
 or BPMN replacement.
 
-TeamKit v0.1 has one current graph node per run. It does not model parallel
-fan-out/fan-in or join completion. If multiple experts need to work in the same
-business phase, model one coordinator-owned graph node and use messages/artifacts
-to collect specialist outputs, or model the work as explicit sequential nodes.
+TeamKit v0.3 retains the v0.1 single-node behavior unless parallelism is explicit.
+Mark parallel edges with `relation: parallel` and the target node with `join: all`;
+all parallel edges from a source are activated together. Unmarked multiple edges
+remain mutually exclusive choice branches. A node that mixes parallel and choice
+edges has no implicit fork path; model the choice inside the branches or remove
+the mixed edges. The Topic ledger exposes `active_nodes` while keeping
+`current_node` as the first active node for backward compatibility.
 
 `main_steps` is not part of the v0.1 protocol. Older drafts may contain it, but
 new teams should model every business step as a graph node.
@@ -160,7 +163,9 @@ process:
         max_visits: 2
 ```
 
-Graph edges also allow communication between the source node expert and target node expert, so users do not need to duplicate every graph edge in `process.communication.rules`.
+Graph edges allow communication between source and target experts in the default
+and `hybrid` modes. In `manual` mode, graph edges do not themselves grant
+communication; explicit rules and the lead/member channel apply.
 
 ## Topic
 
@@ -236,6 +241,8 @@ Keep `output` flat in v0.1. Detailed report templates, section descriptions, and
 ## Workspace Overrides
 
 TeamKit has default run workspace paths. Do not include `workspace` in ordinary user-created teams.
+
+Platform adapters may inject `TEAMKIT_RUNS_DIR` to place all default run data outside the team definition directory.
 
 Only add `workspace` when an advanced user explicitly needs to override default run paths:
 

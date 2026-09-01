@@ -2,7 +2,7 @@
 
 This is the thin coordination model for complex business agent teams.
 
-It borrows CodexLoom's useful Topic idea without copying CodexLoom's full long-lived agent organization model.
+It uses a small Topic object for shared run state without turning a chat thread into a long-lived agent organization model.
 
 ## Core Objects
 

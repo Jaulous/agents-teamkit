@@ -7,7 +7,7 @@ Stable writes in the run workspace should be performed through TeamKit commands.
 ## Layout
 
 ```text
-runs/run-001/
+<run-base>/run-001/
   brief.md
   state.yaml
   topic.yaml
@@ -26,6 +26,11 @@ runs/run-001/
     expert-results/
   final-report.md
 ```
+
+`<run-base>` resolves from `workspace.run_root`, then `TEAMKIT_RUNS_DIR`, then
+the team directory's `runs/` default. In an installed WorkBuddy package the
+adapter injects `~/.workbuddy/teamkit-runs/<team-id>`; the package's copied
+`teamkit-workspace/` is a definition snapshot, not the runtime data location.
 
 ## Files
 

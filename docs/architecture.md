@@ -8,9 +8,9 @@ WorkBuddy is the first Adapter and packaging target. It must not define the user
 
 The system should be easy for business users while staying technically extensible underneath.
 
-## Reference From CodexLoom
+## Design References
 
-Borrow these ideas:
+TeamKit is informed by common agent-collaboration patterns:
 
 - explicit agent profile and responsibility boundaries
 - structured inter-agent communication
@@ -20,7 +20,7 @@ Borrow these ideas:
 - human input or human decision as a first-class event
 - message and event visibility for debugging and governance
 
-Do not borrow CodexLoom's long-lived Codex thread model. TeamKit does not need to turn a thread into a durable agent.
+TeamKit does not turn a chat thread into a durable agent. It defines reusable team files and per-run workspaces instead.
 
 ## Layered Architecture
 
@@ -62,7 +62,7 @@ Agents should not directly edit communication ledgers, event ledgers, artifact i
 - `teamkit artifact publish`
 - `teamkit result publish`
 
-This follows the CodexLoom lesson that strong coordination semantics should be implemented by tools/commands rather than by asking agents to remember a text convention.
+This follows the lesson that strong coordination semantics should be implemented by tools and commands rather than by asking agents to remember a text convention.
 
 ### Skill Layer
 
@@ -144,7 +144,7 @@ Start with files, commands, and skills, then add a page:
 
 1. Define `team.yaml`.
 2. Add example expert profile files.
-3. Implement low-cut `teamkit` command behavior.
+3. Implement focused `teamkit` command behavior.
 4. Implement Team Builder Skill.
 5. Implement Prompt Optimizer Skill.
 6. Compile a platform-independent execution plan.

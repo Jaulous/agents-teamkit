@@ -154,15 +154,15 @@ Use:
 
 ### manual
 
-Only the configured main process sends work between experts. Extra messages should be rare and normally require lead/human approval.
+通信许可来自显式 `communication.rules` 与 lead↔member 内建通道；图边本身不自动授予成员间通信。`allow_expert_requests` 仍可显式开启成员请求。
 
 ### hybrid
 
-Experts may send requests to other experts when their profile collaboration rules allow it.
+沿用 v0.1 兼容逻辑：图边、显式 rules 和 `allow_expert_requests` 共同决定通信许可。
 
 ### lead
 
-The lead expert can create requests and handoffs based on the run brief and current state.
+成员间通信沿用图边/rules 判定；成员可向 lead 发起请求。该字段描述协议能力，不规定调度时序。
 
 ## Business User Visibility
 
