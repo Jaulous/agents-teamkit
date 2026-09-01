@@ -15,7 +15,8 @@ It is platform independent. Host-platform-specific mapping belongs in the Adapte
 
 ## Implementation Principle
 
-Experts do not directly write message ledger files or handcraft native platform messages.
+Experts do not directly write message ledger files. The sender agent uses the host
+platform's native member-messaging tool for physical delivery.
 
 They use TeamKit commands:
 
@@ -26,7 +27,8 @@ teamkit msg close ...
 teamkit msg list ...
 ```
 
-The command layer creates logical messages, appends ledgers, and later delegates native delivery to a platform Adapter when available.
+The command layer creates logical messages and appends the run ledgers. It does not
+map commands to platform APIs or write platform inboxes.
 
 ## Core Concepts
 
@@ -119,15 +121,19 @@ created -> sent -> replied
  closed   failed   closed
 ```
 
+The current implementation produces `sent` when the logical message is recorded,
+then `replied` or `closed`. It does not produce `failed`.
+
 ### Status Meanings
 
 - `created`: message was created in the logical ledger.
-- `sent`: message was handed to the current communication substrate or staged for handoff.
+- `sent`: message was recorded in the run ledger. Recording is not physical delivery.
 - `replied`: message has a linked reply.
 - `closed`: message was explicitly closed without requiring further action.
-- `failed`: delivery or handling failed.
+- `failed`: reserved for a future implementation; it is not produced by the current version.
 
-Host platforms may use different native states. The Adapter maps native states into this low-cut logical set for version 0.1.
+Host platforms may use different native states, but the current TeamKit version does
+not mirror those states into the logical ledger.
 
 Do not model complex delivery queues, handling attempts, or active-turn reply injection in the first version unless a target runtime makes them essentially free.
 
@@ -177,13 +183,25 @@ Show messages in business language:
 
 Hide native platform IDs unless debugging.
 
+## Physical Delivery Boundary
+
+`teamkit msg send`, `msg reply`, and `msg close` are ledger operations. A generated
+WorkBuddy agent physically delivers a message by calling the native `SendMessage`
+tool, including the subject, body, references, and TeamKit message ID so the
+recipient can correlate it with the ledger. `msg close` only closes the logical
+record; it does not notify a native inbox. Agents can observe the protocol state
+with `msg list` and `run status`.
+
 ## Adapter Boundary
 
-Each platform Adapter must map:
+The current package-level adapter does not implement a command-to-messaging API
+mapping or a bidirectional native-message mirror. Each platform integration may
+provide its own generated-agent guidance and native tool usage while TeamKit keeps
+the logical protocol stable.
 
 ```text
-TeamKit-created LogicalMessage -> host-platform native message
-host-platform native message/event -> LogicalMessage mirror
+TeamKit-created LogicalMessage -> run ledger
+sender agent -> host-platform native member-messaging tool
 ```
 
 The logical protocol remains stable even if a host platform's native protocol changes.

@@ -27,7 +27,7 @@ This directory is organized by the questions a new contributor or adapter author
 
 - [WorkBuddy adapter](workbuddy-adapter.md): current package-level WorkBuddy export and install flow.
 - [Directory model](directory-model.md): tool home, team roots, and run data placement.
-- [WorkBuddy bridge](workbuddy-bridge.md): future native integration responsibilities.
+- [WorkBuddy bridge](workbuddy-bridge.md): delivery guidance and package-level bridge boundaries.
 - [MVP capability map](mvp-capability-map.md): implemented, deferred, and explicitly excluded capabilities.
 
 ## Public Project Notes

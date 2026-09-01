@@ -2872,6 +2872,16 @@ def workbuddy_display_description_en(ctx: TeamContext) -> str:
     return f"Runs {name} with Agents TeamKit graph, topic, message, context, artifact, and final result commands."
 
 
+COMMUNICATION_GUIDANCE_BLOCK = """## 消息送达
+
+- `msg send` / `msg reply` / `msg close` 只更新协议账本并返回消息 ID；记录写入账本不代表消息已经送达对方。
+- 消息真正送进对方会话，由发送成员调用平台原生成员通信工具完成：本团队平台成员通信工具为 `SendMessage`。发出消息时以 `msg send` 记账取得消息 ID，并通过 `SendMessage` 把主题、正文、相关 artifact/evidence 引用和消息 ID 发给对方。
+- 收到消息的成员使用 `run status`、`msg list` 读取账本上的完整上下文，再用 `msg reply --reply-to <原消息 ID>` 回复并关联原消息。
+- 只向团队通信许可范围内的成员发消息；一次只问一个问题；不默认广播。
+- 发出的请求没有收到回复时，由发送方按团队流程自行决定是否再次询问；送达与应答不是协议承诺，属于业务流程的职责。
+"""
+
+
 def workbuddy_runtime_skill_text(package_name: str) -> str:
     return f"""---
 name: teamkit-runtime
@@ -2899,6 +2909,8 @@ The wrapper defaults `--team` to the packaged `teamkit-workspace/team.yaml`. Use
 The wrapper supports `team validate`, `run init`, `run status`, `run close`, `topic status`, `graph next`, `graph advance`, `msg`, `context`, `human`, `artifact`, `result`, and the batch ledger commands. Use `run close` to close a task run. `run status` includes graph actions, active nodes, and next expert/task information.
 
 Do not edit `topic.yaml`, `messages.jsonl`, `events.jsonl`, `context-items.jsonl`, `human-review.jsonl`, `state.yaml`, or artifact index files directly.
+
+{COMMUNICATION_GUIDANCE_BLOCK}
 """
 
 
@@ -3063,6 +3075,8 @@ def workbuddy_lead_markdown(ctx: TeamContext, package_name: str, lead_id: str, m
 - 当前 core 派生的可通信专家对：{", ".join(allowed_pairs) if allowed_pairs else "（无额外许可）"}
 - 消息 reply/close、required message、human review 和 Topic waiting 的状态由协议账本记录。
 
+{COMMUNICATION_GUIDANCE_BLOCK}
+
 ## Coordinator
 
 TeamKit coordinator expert id: `{coordinator or 'not configured'}`
@@ -3100,6 +3114,8 @@ def workbuddy_member_markdown(ctx: TeamContext, package_name: str, expert_id: st
 - 可使用 `{{{{TEAMKIT_SCRIPT}}}} context list` 读取已授权 Context Item，使用 `context add` 追加受管资料。
 - 可使用 `artifact publish` 发布可引用产出；消息正文应保持简洁并通过 `artifactRefs` 引用文件。
 - 不直接编辑 TeamKit ledgers；以 Topic、Graph、Message 状态为准。
+
+{COMMUNICATION_GUIDANCE_BLOCK}
 """
     )
 

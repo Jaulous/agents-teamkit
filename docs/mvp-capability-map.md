@@ -65,14 +65,17 @@ This file keeps the first implementation honest: what is already implemented, wh
 - source-tree `bin/teamkit` entrypoint smoke test
 - WorkBuddy package export tests for both Agents TeamKit 工作台 and generated team packages
 
-## Deferred To WorkBuddy Adapter
+## Host-Native WorkBuddy Boundary
 
-These are deterministic implementation facts, not open product design questions:
+These are deterministic implementation facts, not open product design questions.
+The first item is implemented as generated-agent guidance; the remaining native
+integration items are intentionally not implemented:
 
 - create/configure WorkBuddy-native agent teams through official APIs beyond package installation
 - map execution plans to WorkBuddy native task objects
-- send TeamKit logical messages through WorkBuddy official agent communication
-- mirror WorkBuddy native messages/events back into the run workspace
+- send TeamKit logical messages through a WorkBuddy agent's native `SendMessage`
+  tool (generated-agent guidance; TeamKit itself remains ledger-only)
+- mirror WorkBuddy native messages/events back into the run workspace (not planned)
 - mirror or attach managed Context Items through WorkBuddy-native file/artifact mechanisms
 - record outputs from existing WorkBuddy Skills or internal API wrappers as Context Items or artifacts when a team wants them in the run record
 - attach published artifacts to WorkBuddy-native artifacts if supported

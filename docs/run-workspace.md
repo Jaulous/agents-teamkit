@@ -62,9 +62,8 @@ Per-expert working area. Experts own their own `scratch.md` and `result.md`; oth
 
 ### `messages.jsonl`
 
-Mirrored host-platform messages when available.
-
-In version 0.1 this file is primarily written by `teamkit msg` commands. A platform Adapter may add native message identifiers later.
+Logical TeamKit message ledger. It is written by `teamkit msg` commands and is
+not a mirror of native host-platform messages.
 
 Each line should include:
 
@@ -79,7 +78,7 @@ Runtime and bridge events:
 - run started
 - graph advanced
 - expert invoked
-- message mirrored
+- logical message recorded
 - artifact produced
 - human input requested
 - run completed

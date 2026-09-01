@@ -2,14 +2,16 @@
 
 TeamKit commands are the deterministic action layer of the architecture.
 
-Agents should not directly edit ledgers or canonical shared files. They call commands; commands update the run workspace, append ledgers, and later delegate to a host platform through an Adapter.
+Agents should not directly edit ledgers or canonical shared files. They call commands;
+commands update the run workspace and append ledgers. Physical message delivery is
+performed by the sender agent with the host platform's native member-messaging tool.
 
 ## Design Goals
 
 - Make stable actions reliable instead of prompt-dependent.
 - Keep communication, artifacts, run state, and final results auditable.
 - Provide a platform-independent command contract before host-platform integration.
-- Let platform Adapters map command effects to native platform capabilities later.
+- Keep platform-native delivery outside the core command implementation.
 
 ## Command Boundary
 
@@ -17,10 +19,11 @@ Agents should not directly edit ledgers or canonical shared files. They call com
 Agent intent
   -> teamkit command
   -> run workspace ledger/artifact update
-  -> optional platform Adapter sync
+  -> sender agent uses host-native communication tool when a message must be delivered
 ```
 
-The first version may only update local files. Host-platform integration is an Adapter concern.
+The first version records logical messages locally. The host platform owns the actual
+delivery mechanism; WorkBuddy generated agents use `SendMessage`.
 
 ## Minimal Command Set
 
@@ -348,7 +351,8 @@ Responsibilities:
 - append logical message to `messages.jsonl`
 - append event to `events.jsonl`
 - return message ID
-- later: ask a platform Adapter to send the native message
+- delivery: the sender member uses its host platform's native member-messaging tool
+  (WorkBuddy: `SendMessage`); see the Communication Guidance in generated team templates
 
 ### `teamkit msg reply`
 
@@ -647,13 +651,13 @@ Agents should publish official results through `teamkit artifact publish`.
 
 ## Adapter Boundary
 
-A platform Adapter may enhance commands. For example:
+A platform Adapter does not map core message commands to a native messaging API in the
+current design. The sender agent performs physical delivery:
 
 ```text
 teamkit msg send
   -> append messages.jsonl
-  -> call host-platform official messaging API
-  -> store native_message_id
+  -> sender member calls WorkBuddy SendMessage
 ```
 
 The command contract should remain stable even if host-platform APIs change.

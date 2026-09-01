@@ -747,6 +747,29 @@ class TeamKitCliTest(unittest.TestCase):
         self.assertEqual(len(plugin["tags"]), 3)
         self.assertEqual(len(plugin["quickPrompts"]), 3)
 
+        # Generated agents must explain that ledger recording is distinct from
+        # physical delivery through WorkBuddy's native member tool.
+        lead_md = package_dir / "agents" / f"{plugin['agentName']}.md"
+        member_mds = [
+            package_dir / "agents" / f"{member}.md"
+            for member in plugin["teamInfo"]["memberAgents"]
+        ]
+        for md in [lead_md, *member_mds]:
+            text = md.read_text(encoding="utf-8")
+            self.assertIn("## 消息送达", text)
+            self.assertIn("SendMessage", text)
+            self.assertIn("不代表消息已经送达对方", text)
+            self.assertIn("--reply-to", text)
+            for forbidden in ("必须回传", "完成后 SendMessage", "回传主理人"):
+                self.assertNotIn(forbidden, text)
+            self.assertFalse(any(line.strip()[:2].isdigit() for line in text.splitlines()))
+
+        skill_text = (package_dir / "skills" / "teamkit-runtime" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("## 消息送达", skill_text)
+        self.assertIn("SendMessage", skill_text)
+
         install_result = self.run_cli(
             "workbuddy",
             "install",
@@ -773,6 +796,16 @@ class TeamKitCliTest(unittest.TestCase):
         )
         self.assertEqual(wrapper_result.returncode, 0, wrapper_result.stderr)
         self.assertIn("valid team definition", wrapper_result.stdout)
+
+    def test_communication_guidance_block_is_clean(self) -> None:
+        from teamkit.cli import COMMUNICATION_GUIDANCE_BLOCK
+
+        self.assertIn("SendMessage", COMMUNICATION_GUIDANCE_BLOCK)
+        self.assertIn("--reply-to", COMMUNICATION_GUIDANCE_BLOCK)
+        for forbidden in ("必须回传", "完成后 SendMessage", "回传主理人"):
+            self.assertNotIn(forbidden, COMMUNICATION_GUIDANCE_BLOCK)
+        self.assertNotIn("{", COMMUNICATION_GUIDANCE_BLOCK)
+        self.assertNotIn("}", COMMUNICATION_GUIDANCE_BLOCK)
 
     def test_workbuddy_export_init_creates_teamkit_workbench_package(self) -> None:
         result = self.run_cli(

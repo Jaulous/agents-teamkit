@@ -38,7 +38,7 @@ Side channel:
   Run Workspace
   Topic
   Context Item Ledger
-  Event and Message Mirror
+  Event and Message Ledgers
   Artifacts
   Decision Log
 ```
@@ -116,13 +116,16 @@ The Adapter is deliberately after the platform-independent architecture. Team or
 
 The Adapter may be invoked by TeamKit commands, but it does not define the core command contract.
 
+Physical message delivery is performed by agents inside their host runtime with
+native tools. TeamKit never writes host inboxes or maps commands to messaging APIs.
+
 ### Run Workspace
 
 Records each task execution:
 
 - run brief
 - managed Context Items
-- mirrored messages
+- logical messages
 - optional external tool/data snapshots
 - artifacts
 - human input requests
@@ -152,5 +155,6 @@ Start with files, commands, and skills, then add a page:
 6. Compile a platform-independent execution plan.
 7. Export and install the Agents TeamKit 工作台 WorkBuddy entry package.
 8. Export and install user-defined WorkBuddy Team expert packages through the package-level Adapter.
-9. Build deeper adapter-native messaging/task sync only after target platform APIs are confirmed.
+9. Keep native messaging/task sync outside TeamKit Core; generated agents use host
+   tools for physical delivery after the target platform capability is verified.
 10. Add Team Studio once the file and command protocol stabilizes.

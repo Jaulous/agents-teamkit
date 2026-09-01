@@ -4,7 +4,7 @@ The WorkBuddy Bridge maps the kit's team definition into WorkBuddy-native capabi
 
 ## Design Rule
 
-Prefer WorkBuddy official mechanisms for agent teams, messaging, task lists, skills, and artifacts. The kit defines the business protocol; WorkBuddy should execute the native protocol.
+Prefer WorkBuddy official mechanisms for agent teams, messaging, task lists, skills, and artifacts. The kit defines the business protocol; generated WorkBuddy agents use native tools for actions the core cannot perform.
 
 ## Confirmed Local Facts
 
@@ -32,7 +32,8 @@ Transform each expert into WorkBuddy-native configuration:
 
 ### Compile Process
 
-Map `process.graph` to WorkBuddy tasks and official messages when those APIs are available.
+Map `process.graph` to WorkBuddy tasks. Message commands remain logical ledger
+operations; generated agents use the native `SendMessage` tool for physical delivery.
 
 ### Compile Context Visibility
 
@@ -57,29 +58,34 @@ teamkit team compile --team team.yaml --out build/execution-plan.json
 teamkit run init --team team.yaml --run run-001
 ```
 
-The Adapter consumes the execution plan and maps it to native WorkBuddy objects.
+The package-level adapter consumes the execution plan and packages the team for
+WorkBuddy. It does not turn TeamKit message commands into platform API calls.
 
-### Mirror Work
+### Ledger and Native Work
 
-If WorkBuddy exposes messages and events, mirror them into the run workspace:
+TeamKit remains the source of truth for logical run records:
 
 - `messages.jsonl`
 - `events.jsonl`
 - `context-items.jsonl`
 - `artifacts/*`
 
-If WorkBuddy cannot expose a specific event, ask agents to report structured summaries as part of their output.
+The sender agent uses WorkBuddy's native `SendMessage` tool for physical delivery,
+including the TeamKit message ID. TeamKit does not mirror native messages back into
+the logical ledger. If a native event is not visible to TeamKit, the agent can
+record a structured summary through the normal command or artifact flow.
 
-### Enhance TeamKit Commands
+### Message Delivery Boundary
 
-TeamKit commands are the stable contract. The Adapter can enhance them by syncing with WorkBuddy native capabilities:
+TeamKit commands are the stable contract. They record protocol state only:
 
-- `teamkit msg send` -> official WorkBuddy agent message
-- `teamkit context add` -> WorkBuddy file/artifact attachment when available
-- `teamkit human request` -> native human input/approval task when available
-- `teamkit artifact publish` -> native WorkBuddy artifact attachment when available
+- `teamkit msg send/reply/close` -> append the logical message/event ledgers
+- the sender member -> calls WorkBuddy `SendMessage` with the subject, body,
+  references, and TeamKit message ID
+- `teamkit context add`, `human request`, and `artifact publish` -> remain
+  TeamKit ledger/artifact operations; any native presentation is platform-owned
 
-## Message Mapping
+## Message Delivery Envelope
 
 Internal logical message:
 
@@ -96,26 +102,29 @@ artifactRefs:
   - artifacts/expert-results/fact-summary.md
 ```
 
-Maps to WorkBuddy official communication with:
+The sender member passes the following information to WorkBuddy `SendMessage`:
 
-- sender
-- recipient
-- subject
-- body
-- priority
-- thread or run identifier when supported
+- subject and body
+- artifact/evidence references
+- TeamKit message ID, run ID, and recipient context when useful
 
-If metadata is not supported, include a short structured header in the message body.
+If the native tool does not preserve metadata fields, include a short structured
+header in the message body. This is an agent-level delivery convention, not a
+TeamKit-to-API mapping.
 
-## Bridge Questions To Confirm
+## Platform Verification Boundary
 
-These are implementation facts, not product design choices:
+These are implementation facts, not product design choices. The package does not
+assume they are available until a live WorkBuddy check confirms them:
 
-- Can a skill or extension create/configure WorkBuddy Agent Teams?
-- Can expert prompts/roles be set programmatically?
-- Can WorkBuddy official messages carry thread/run identifiers?
-- Can messages carry attachments or artifact references?
-- Can the extension query or subscribe to agent messages and task status?
-- Can a WorkBuddy page extension read/write the team definition files?
+- whether a WorkBuddy team session can deliver member-to-member messages with
+  `SendMessage` and wake the recipient session
+- whether native messages preserve arbitrary run/message identifiers
+- whether native messages carry attachments or artifact references
+- whether an extension can observe native message/task status
+- whether a page extension can read/write team definition files
+
+The v0.2 plan keeps member-to-member delivery as a manual hard gate until this is
+tested in a live WorkBuddy session; see `docs/plans/v0.2-iteration-plan.md:283`.
 
 Once confirmed, the bridge can be implemented directly against the actual WorkBuddy APIs.

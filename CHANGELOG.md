@@ -2,6 +2,28 @@
 
 All notable changes to Agents TeamKit are documented here.
 
+## [0.3.3] - 2026-09-01
+
+This feature release clarifies the boundary between logical message accounting
+and physical delivery in generated WorkBuddy agents.
+
+### Added
+
+- Generated lead/member agents and the TeamKit runtime skill now include a
+  communication guidance block explaining ledger recording, `SendMessage`, and
+  `msg reply --reply-to` correlation.
+- Regression tests verify the guidance is present and contains no legacy
+  scheduling language or unsafe f-string braces.
+
+### Changed
+
+- Communication, command, architecture, WorkBuddy bridge, and adapter docs now
+  describe host-native delivery instead of a future command-to-API adapter.
+- The WorkBuddy installer and public links now default to `v0.3.3`.
+- TeamKit Core message commands and stdout behavior are unchanged.
+
+There are no breaking changes in this release.
+
 ## [0.3.2] - 2026-09-01
 
 This release separates task closure from final-output archiving so the runtime

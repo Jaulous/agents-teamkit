@@ -14,7 +14,7 @@ Both use bundled TeamKit command wrappers to keep Graph, Topic, Context Items, M
 For end users who only want to install `Agents TeamKit 工作台` into their own WorkBuddy:
 
 ```sh
-/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.3.0/scripts/install-workbuddy.sh)"
+/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.3.3/scripts/install-workbuddy.sh)"
 ```
 
 The installer downloads this repository, uses a temporary Python runtime for installation, exports `Agents TeamKit 工作台`, installs a package-local runtime under the WorkBuddy plugin directory, and registers the package in WorkBuddy's user expert marketplace. `TEAMKIT_HOME` is the tool-owned directory, separate from team definitions and run data; generated wrappers inject a per-team `TEAMKIT_RUNS_DIR`.
@@ -34,7 +34,7 @@ Workbench package, then installs it with `--force`, replacing the existing
 `agents-teamkit-workbench` package and refreshing its marketplace registration:
 
 ```sh
-/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.3.0/scripts/install-workbuddy.sh)"
+/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.3.3/scripts/install-workbuddy.sh)"
 ```
 
 The installer uses a temporary download and Python environment; it does not
@@ -207,12 +207,12 @@ Implemented now:
 
 - WorkBuddy app detection
 - Agents TeamKit 工作台 export and installation
-- TeamKit team export to WorkBuddy Team package
+- TeamKit team export to WorkBuddy Team package, including delivery guidance
 - local WorkBuddy expert installation and marketplace registration
 - bundled TeamKit command wrapper for deterministic run state
 
-Deferred until WorkBuddy native APIs are confirmed:
+Not in scope for this iteration:
 
-- mapping `teamkit msg send` to WorkBuddy official agent messages
+- mapping `teamkit msg send` to WorkBuddy native messages (delivery is performed by the sender member with `SendMessage`; `msg` commands only record the ledger)
 - mirroring WorkBuddy native messages back into `messages.jsonl`
 - opening or starting WorkBuddy sessions through deep links
