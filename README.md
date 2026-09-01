@@ -108,6 +108,7 @@ bin/teamkit workbuddy install --package build/workbuddy/risk-review --force
 
 See [docs/workbuddy-adapter.md](docs/workbuddy-adapter.md) for the adapter boundary and local installation details.
 See [docs/directory-model.md](docs/directory-model.md) for tool home, team roots, and run data placement.
+To update an existing WorkBuddy installation, rerun the same installer; generated team packages must be re-exported and reinstalled with `--force`. See the adapter guide for legacy run-data precautions.
 
 ## Development
 

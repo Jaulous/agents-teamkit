@@ -27,6 +27,41 @@ TEAMKIT_WORKBUDDY_CONFIG_DIR=/path/to/.workbuddy /bin/bash scripts/install-workb
 TEAMKIT_SOURCE_DIR=/path/to/agents-teamkit /bin/bash scripts/install-workbuddy.sh
 ```
 
+## Update An Existing Installation
+
+The one-command installer is also the upgrade command. It exports the latest
+Workbench package, then installs it with `--force`, replacing the existing
+`agents-teamkit-workbench` package and refreshing its marketplace registration:
+
+```sh
+/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.3.0/scripts/install-workbuddy.sh)"
+```
+
+The installer uses a temporary download and Python environment; it does not
+modify the TeamKit repository or require a separate uninstall step. If WorkBuddy
+does not show the new package immediately, restart WorkBuddy and reopen the
+expert center.
+
+To update a generated Team expert package, re-export it from the current
+`team.yaml` and reinstall the generated package with the same package name:
+
+```sh
+bin/teamkit workbuddy export \
+  --team /path/to/my-team/team.yaml \
+  --out /path/to/my-team/build/workbuddy \
+  --force
+bin/teamkit workbuddy install \
+  --package /path/to/my-team/build/workbuddy/my-team \
+  --force
+```
+
+`--force` replaces only the installed plugin files and marketplace entry. In
+v0.3, normal WorkBuddy run data lives under
+`~/.workbuddy/teamkit-runs/<team-id>/`, so it is not removed when updating the
+package. For installations created before v0.3, back up any data under
+`teamkit-workspace/runs/` before upgrading: the installer prints a warning and
+replaces that legacy package directory.
+
 ## Local Detection
 
 ```sh
