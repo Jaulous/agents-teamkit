@@ -578,7 +578,9 @@ teamkit workbuddy export-init \
 Responsibilities:
 
 - generate an installable `Agents TeamKit 工作台` WorkBuddy package
-- bundle `agent-team-builder`, `agent-prompt-optimizer`, and a generic TeamKit command wrapper
+- bundle every repository Skill (including `agent-team-builder`,
+  `agent-prompt-optimizer`, and `agent-team-reviewer`) plus a generic TeamKit
+  command wrapper
 - include TeamKit docs, schema, and vendored CLI for self-contained team creation and validation
 
 ### `teamkit workbuddy export`

@@ -38,7 +38,8 @@ This file keeps the first implementation honest: what is already implemented, wh
 ### WorkBuddy Adapter
 
 - detects local WorkBuddy desktop app and bundled `codebuddy` CLI
-- exports an `Agents TeamKit 工作台` WorkBuddy entry package with builder, context management, and optimizer skills
+- exports an `Agents TeamKit 工作台` WorkBuddy entry package with all repository
+  Skills, including builder, reviewer, context management, and optimizer skills
 - exports `team.yaml` into a WorkBuddy Team expert package
 - vendors TeamKit runtime into the generated package
 - installs and registers packages in WorkBuddy's user expert marketplace

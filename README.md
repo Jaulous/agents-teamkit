@@ -4,7 +4,7 @@ Agents TeamKit is a lightweight toolkit for designing, validating, packaging, an
 
 It gives business users a simple team model: experts, responsibilities, collaboration flow, managed context, and expected output. TeamKit turns that model into a deterministic execution plan and run workspace. Platform adapters can then package the same team for a concrete runtime such as WorkBuddy without leaking platform details into the core model.
 
-> Project status: v0.3.3. The core file format, directory model, graph execution, parallel fork/join, batch ledger, WorkBuddy package adapter, and generated-agent communication guidance are implemented. Physical message delivery remains host-native.
+> Project status: v0.3.4. The core file format, directory model, graph execution, parallel fork/join, batch ledger, WorkBuddy package adapter, and generated-agent communication guidance are implemented. Physical message delivery remains host-native.
 
 ## Why TeamKit
 
@@ -92,7 +92,7 @@ WorkBuddy is the first adapter and packaging target. It is optional: TeamKit Cor
 Install the TeamKit Workbench package into WorkBuddy:
 
 ```sh
-/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.3.3/scripts/install-workbuddy.sh)"
+/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.3.4/scripts/install-workbuddy.sh)"
 ```
 
 Or export packages from a local checkout:

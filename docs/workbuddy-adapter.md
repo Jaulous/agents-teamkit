@@ -14,7 +14,7 @@ Both use bundled TeamKit command wrappers to keep Graph, Topic, Context Items, M
 For end users who only want to install `Agents TeamKit 工作台` into their own WorkBuddy:
 
 ```sh
-/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.3.3/scripts/install-workbuddy.sh)"
+/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.3.4/scripts/install-workbuddy.sh)"
 ```
 
 The installer downloads this repository, uses a temporary Python runtime for installation, exports `Agents TeamKit 工作台`, installs a package-local runtime under the WorkBuddy plugin directory, and registers the package in WorkBuddy's user expert marketplace. `TEAMKIT_HOME` is the tool-owned directory, separate from team definitions and run data; generated wrappers inject a per-team `TEAMKIT_RUNS_DIR`.
@@ -34,7 +34,7 @@ Workbench package, then installs it with `--force`, replacing the existing
 `agents-teamkit-workbench` package and refreshing its marketplace registration:
 
 ```sh
-/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.3.3/scripts/install-workbuddy.sh)"
+/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.3.4/scripts/install-workbuddy.sh)"
 ```
 
 The installer uses a temporary download and Python environment; it does not
@@ -92,6 +92,7 @@ This creates the WorkBuddy entry package:
 build/workbuddy/agents-teamkit-workbench/
   .codebuddy-plugin/plugin.json
   agents/
+  skills/agent-team-reviewer/
   skills/agent-team-builder/
   skills/agent-prompt-optimizer/
   skills/agents-teamkit-workbench-runtime/

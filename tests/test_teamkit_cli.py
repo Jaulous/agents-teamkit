@@ -823,6 +823,20 @@ class TeamKitCliTest(unittest.TestCase):
         self.assertTrue((package_dir / "settings.json").exists())
         self.assertTrue((package_dir / "skills" / "agent-team-builder" / "SKILL.md").exists())
         self.assertTrue((package_dir / "skills" / "agent-prompt-optimizer" / "SKILL.md").exists())
+        self.assertTrue((package_dir / "skills" / "agent-team-reviewer" / "SKILL.md").exists())
+        source_skill_names = sorted(
+            path.name
+            for path in (ROOT / "skills").iterdir()
+            if path.is_dir() and (path / "SKILL.md").is_file()
+        )
+        exported_skill_names = sorted(
+            path.name
+            for path in (package_dir / "skills").iterdir()
+            if path.is_dir()
+            and path.name != "agents-teamkit-workbench-runtime"
+            and (path / "SKILL.md").is_file()
+        )
+        self.assertEqual(exported_skill_names, source_skill_names)
         wrapper_path = package_dir / "skills" / "agents-teamkit-workbench-runtime" / "scripts" / "teamkit.py"
         self.assertTrue(wrapper_path.exists())
         self.assertIn(".agents-teamkit-runtime", wrapper_path.read_text(encoding="utf-8"))
@@ -836,7 +850,22 @@ class TeamKitCliTest(unittest.TestCase):
         self.assertEqual(plugin["profession"], plugin["displayName"])
         self.assertEqual(plugin["teamInfo"]["leadAgent"], plugin["agentName"])
         self.assertEqual(plugin["teamInfo"]["memberAgents"], [])
-        self.assertEqual(len(plugin["skills"]), 3)
+        self.assertEqual(
+            plugin["skills"],
+            [
+                "./skills/agent-prompt-optimizer",
+                "./skills/agent-team-builder",
+                "./skills/agent-team-reviewer",
+                "./skills/agents-teamkit-workbench-runtime",
+            ],
+        )
+        lead_frontmatter = (package_dir / "agents" / f"{plugin['agentName']}.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            "skills: [agent-prompt-optimizer, agent-team-builder, agent-team-reviewer, agents-teamkit-workbench-runtime]",
+            lead_frontmatter,
+        )
 
         install_result = self.run_cli(
             "workbuddy",

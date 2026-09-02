@@ -2,6 +2,21 @@
 
 All notable changes to Agents TeamKit are documented here.
 
+## [0.3.4] - 2026-09-02
+
+This maintenance release fixes the WorkBuddy Workbench package skill export.
+
+### Fixed
+
+- Workbench exports now discover and bundle every repository Skill containing a
+  `SKILL.md`, including `agent-team-reviewer`.
+- The generated lead agent, WorkBuddy `plugin.json`, and copied Skill
+  directories now use the same discovered Skill list.
+- Regression coverage now compares the exported Workbench Skill manifest with
+  the repository Skill set so newly added Skills cannot silently be omitted.
+
+There are no breaking changes in this release.
+
 ## [0.3.3] - 2026-09-01
 
 This feature release clarifies the boundary between logical message accounting

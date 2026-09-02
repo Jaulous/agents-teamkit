@@ -3158,7 +3158,11 @@ Use `context`, `topic`, `graph`, `msg`, `human`, `artifact`, and `result` comman
 """
 
 
-def workbuddy_init_agent_markdown(package_name: str, agent_id: str) -> str:
+def workbuddy_init_agent_markdown(
+    package_name: str,
+    agent_id: str,
+    workbench_skill_names: list[str],
+) -> str:
     return (
         workbuddy_agent_frontmatter(
             agent_id,
@@ -3168,7 +3172,7 @@ def workbuddy_init_agent_markdown(package_name: str, agent_id: str) -> str:
             "Agents TeamKit Team Workbench",
             "Helps business users create, manage, validate, export, and improve Agents TeamKit multi-agent teams for WorkBuddy trial use.",
             180,
-            ["agent-team-builder", "agent-prompt-optimizer", "agents-teamkit-workbench-runtime"],
+            [*workbench_skill_names, "agents-teamkit-workbench-runtime"],
         )
         + f"""
 # Agents TeamKit 工作台
@@ -3233,6 +3237,18 @@ def workbuddy_skill_text_for_package(source_skill: Path, allowed_tools: str) -> 
     metadata["allowed-tools"] = allowed_tools
     rendered = yaml.safe_dump(metadata, allow_unicode=True, sort_keys=False).strip()
     return f"---\n{rendered}\n---{body}"
+
+
+def workbuddy_init_skill_names(repo_root: Path) -> list[str]:
+    """Return repository Skills that belong in the Workbench package."""
+    skills_root = repo_root / "skills"
+    if not skills_root.exists():
+        raise TeamKitError(f"WorkBuddy source skills directory not found: {skills_root}")
+    return sorted(
+        skill_dir.name
+        for skill_dir in skills_root.iterdir()
+        if skill_dir.is_dir() and (skill_dir / "SKILL.md").is_file()
+    )
 
 
 def copy_workbuddy_skill(source_skill: Path, target_skill: Path, allowed_tools: str) -> None:
@@ -3426,25 +3442,22 @@ def export_workbuddy_init_package(
     package_dir.mkdir(parents=True)
 
     repo_root = Path(__file__).resolve().parent.parent
+    workbench_skill_names = workbuddy_init_skill_names(repo_root)
     agent_id = kebab_case(f"{package_name}-lead", "agents-teamkit-workbench-lead")
     agents_dir = package_dir / "agents"
     agents_dir.mkdir()
     (agents_dir / f"{agent_id}.md").write_text(
-        workbuddy_init_agent_markdown(package_name, agent_id),
+        workbuddy_init_agent_markdown(package_name, agent_id, workbench_skill_names),
         encoding="utf-8",
     )
 
     skills_dir = package_dir / "skills"
-    copy_workbuddy_skill(
-        repo_root / "skills" / "agent-team-builder",
-        skills_dir / "agent-team-builder",
-        "Read,Write,Edit,Bash",
-    )
-    copy_workbuddy_skill(
-        repo_root / "skills" / "agent-prompt-optimizer",
-        skills_dir / "agent-prompt-optimizer",
-        "Read,Write,Edit,Bash",
-    )
+    for skill_name in workbench_skill_names:
+        copy_workbuddy_skill(
+            repo_root / "skills" / skill_name,
+            skills_dir / skill_name,
+            "Read,Write,Edit,Bash",
+        )
     runtime_dir = skills_dir / "agents-teamkit-workbench-runtime"
     (runtime_dir / "scripts").mkdir(parents=True)
     (runtime_dir / "SKILL.md").write_text(workbuddy_init_runtime_skill_text(), encoding="utf-8")
@@ -3472,8 +3485,7 @@ def export_workbuddy_init_package(
         "author": {"name": "Agents TeamKit contributors", "url": "https://github.com/Jaulous/agents-teamkit"},
         "agents": [f"./agents/{agent_id}.md"],
         "skills": [
-            "./skills/agent-team-builder",
-            "./skills/agent-prompt-optimizer",
+            *[f"./skills/{skill_name}" for skill_name in workbench_skill_names],
             "./skills/agents-teamkit-workbench-runtime",
         ],
         "expertType": "team",
