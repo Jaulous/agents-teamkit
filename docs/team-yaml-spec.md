@@ -7,7 +7,7 @@ It is intentionally business-facing. Internal compilers may expand it into a Tea
 ## Top-Level Shape
 
 ```yaml
-version: 0.1
+version: 0.3
 
 team:
   id: business-task
@@ -112,7 +112,7 @@ Rules:
 
 ## Process Model
 
-`process.graph` is the only process orchestration model in TeamKit v0.1.
+`process.graph` is the only process orchestration model in TeamKit.
 
 The graph is useful for both linear and branching work. A simple fixed sequence is
 represented as a straight graph. A complex collaboration can branch as an
@@ -129,7 +129,7 @@ edges has no implicit fork path; model the choice inside the branches or remove
 the mixed edges. The Topic ledger exposes `active_nodes` while keeping
 `current_node` as the first active node for backward compatibility.
 
-`main_steps` is not part of the v0.1 protocol. Older drafts may contain it, but
+`main_steps` is a legacy draft field, not part of the current protocol. Older drafts may contain it, but
 new teams should model every business step as a graph node.
 
 ## Graph
@@ -236,7 +236,7 @@ output:
     - 人工介入建议
 ```
 
-Keep `output` flat in v0.1. Detailed report templates, section descriptions, and acceptance requirements belong in expert profiles or reusable reference files, not in nested `output.final_report` objects.
+Keep `output` flat. Detailed report templates, section descriptions, and acceptance requirements belong in expert profiles or reusable reference files, not in nested `output.final_report` objects.
 
 ## Workspace Overrides
 

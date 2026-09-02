@@ -17,7 +17,7 @@ This file keeps the first implementation honest: what is already implemented, wh
 
 - `agent-team-builder`: guides team, expert, process, Topic-based coordination, Context Item visibility, human input, and output definition
 - `agent-prompt-optimizer`: tightens expert prompts after design or run feedback
-- `agent-team-reviewer`: reviews existing team definitions for parallelism and communication issues
+- `agent-team-optimizer`: reviews and optimizes existing multi-agent teams on any platform — communication, scheduling, structure, and architecture fit, with per-change user approval
 
 ### Deterministic Command Layer
 

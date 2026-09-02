@@ -1,4 +1,0 @@
-interface:
-  display_name: "Agent Team Reviewer"
-  short_description: "检查已有多 Agent 团队的并行、通信与一致性问题"
-  default_prompt: "使用 $agent-team-reviewer 检查这个已有 Agent 团队定义"

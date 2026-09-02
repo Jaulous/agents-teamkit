@@ -760,8 +760,7 @@ class TeamKitCliTest(unittest.TestCase):
             self.assertIn("SendMessage", text)
             self.assertIn("不代表消息已经送达对方", text)
             self.assertIn("--reply-to", text)
-            for forbidden in ("必须回传", "完成后 SendMessage", "回传主理人"):
-                self.assertNotIn(forbidden, text)
+            self.assertIn("必须通过 `SendMessage` 将完整结果回传主理人", text)
             self.assertFalse(any(line.strip()[:2].isdigit() for line in text.splitlines()))
 
         skill_text = (package_dir / "skills" / "teamkit-runtime" / "SKILL.md").read_text(
@@ -797,13 +796,183 @@ class TeamKitCliTest(unittest.TestCase):
         self.assertEqual(wrapper_result.returncode, 0, wrapper_result.stderr)
         self.assertIn("valid team definition", wrapper_result.stdout)
 
+    def test_workbuddy_export_packages_declared_external_skill_and_avatars(self) -> None:
+        skill_dir = self.workdir / "custom-skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: custom-skill\ndescription: A test skill\n---\n\n# Custom Skill\n",
+            encoding="utf-8",
+        )
+        (self.workdir / "workbuddy.yaml").write_text(
+            "skills:\n  - name: custom-skill\n    path: custom-skill\n    agents:\n      - evidence\n",
+            encoding="utf-8",
+        )
+        avatars = self.workdir / "avatars"
+        avatars.mkdir()
+        (avatars / "team.png").write_bytes(b"team-avatar")
+
+        result = self.run_cli(
+            "workbuddy",
+            "export",
+            "--team",
+            "team.yaml",
+            "--out",
+            "build/workbuddy",
+            "--force",
+            "--json",
+        )
+        package_dir = Path(json.loads(result.stdout)["packageDir"])
+        plugin = json.loads((package_dir / ".codebuddy-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        self.assertIn("./skills/custom-skill", plugin["skills"])
+        self.assertTrue((package_dir / "skills" / "custom-skill" / "SKILL.md").exists())
+        self.assertEqual(plugin["avatar"], "avatars/team.png")
+        self.assertTrue((package_dir / "avatars" / "team.png").exists())
+        evidence_md = (package_dir / "agents" / "risk-review-evidence.md").read_text(encoding="utf-8")
+        self.assertIn("skills: [teamkit-runtime, custom-skill]", evidence_md)
+        self.assertNotIn("custom-skill", (package_dir / "agents" / "risk-review-team-lead.md").read_text(encoding="utf-8"))
+
+    def test_workbuddy_export_failure_preserves_previous_package(self) -> None:
+        first = self.run_cli(
+            "workbuddy",
+            "export",
+            "--team",
+            "team.yaml",
+            "--out",
+            "build/workbuddy",
+            "--force",
+            "--json",
+        )
+        package_dir = Path(json.loads(first.stdout)["packageDir"])
+        sentinel = package_dir / "sentinel.txt"
+        sentinel.write_text("keep", encoding="utf-8")
+
+        # A malformed adapter manifest fails before publication.  The already
+        # published package must remain intact even when --force is requested.
+        (self.workdir / "workbuddy.yaml").write_text("skills: not-a-list\n", encoding="utf-8")
+        failed = self.run_cli(
+            "workbuddy",
+            "export",
+            "--team",
+            "team.yaml",
+            "--out",
+            "build/workbuddy",
+            "--force",
+            check=False,
+        )
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
+
+    def test_workbuddy_export_init_failure_preserves_previous_package(self) -> None:
+        first = self.run_cli(
+            "workbuddy",
+            "export-init",
+            "--out",
+            "build/workbuddy",
+            "--force",
+            "--json",
+        )
+        package_dir = Path(json.loads(first.stdout)["packageDir"])
+        sentinel = package_dir / "sentinel.txt"
+        sentinel.write_text("keep", encoding="utf-8")
+
+        # Exercise the staging failure path directly without changing source
+        # files: the package builder must leave the previous package untouched.
+        from teamkit import cli as cli_module
+
+        original = cli_module.workbuddy_init_skill_names
+        cli_module.workbuddy_init_skill_names = lambda _repo_root: (_ for _ in ()).throw(
+            cli_module.TeamKitError("injected export failure")
+        )
+        try:
+            with self.assertRaises(cli_module.TeamKitError):
+                cli_module.export_workbuddy_init_package(
+                    self.workdir / "build" / "workbuddy",
+                    "agents-teamkit-workbench",
+                    True,
+                )
+        finally:
+            cli_module.workbuddy_init_skill_names = original
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
+
+    def test_workbuddy_install_renders_final_runtime_paths(self) -> None:
+        from teamkit import cli as cli_module
+
+        staging = self.workdir / "staging"
+        target = self.workdir / "installed" / "risk-review"
+        wrapper = staging / "skills" / "teamkit-runtime" / "scripts" / "teamkit.py"
+        skill = staging / "skills" / "teamkit-runtime" / "SKILL.md"
+        wrapper.parent.mkdir(parents=True)
+        wrapper.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+        skill.write_text("{{TEAMKIT_SCRIPT}} team validate\n", encoding="utf-8")
+
+        cli_module.render_installed_teamkit_script_paths(staging, target)
+
+        self.assertEqual(
+            skill.read_text(encoding="utf-8"),
+            str((target / "skills" / "teamkit-runtime" / "scripts" / "teamkit.py").resolve())
+            + " team validate\n",
+        )
+        self.assertNotIn(str(staging), skill.read_text(encoding="utf-8"))
+
+    def test_workbuddy_install_rejects_nested_source_and_preserves_target_on_validation_failure(self) -> None:
+        export_result = self.run_cli(
+            "workbuddy",
+            "export",
+            "--team",
+            "team.yaml",
+            "--out",
+            "build/workbuddy",
+            "--force",
+            "--json",
+        )
+        package_dir = Path(json.loads(export_result.stdout)["packageDir"])
+        config_dir = self.workdir / "fake-workbuddy"
+        target = config_dir / "plugins" / "marketplaces" / "my-experts" / "plugins" / "risk-review"
+        target.mkdir(parents=True)
+        sentinel = target / "sentinel.txt"
+        sentinel.write_text("keep", encoding="utf-8")
+
+        nested_source = target / "source"
+        shutil.copytree(package_dir, nested_source)
+        nested_result = self.run_cli(
+            "workbuddy",
+            "install",
+            "--package",
+            str(nested_source),
+            "--config-dir",
+            str(config_dir),
+            "--force",
+            check=False,
+        )
+        self.assertNotEqual(nested_result.returncode, 0)
+        self.assertTrue(nested_source.exists())
+        self.assertTrue(sentinel.exists())
+
+        broken_source = self.workdir / "broken-package"
+        shutil.copytree(package_dir, broken_source)
+        broken_plugin = broken_source / ".codebuddy-plugin" / "plugin.json"
+        plugin = json.loads(broken_plugin.read_text(encoding="utf-8"))
+        plugin["skills"].append("./skills/missing-skill")
+        broken_plugin.write_text(json.dumps(plugin, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        broken_result = self.run_cli(
+            "workbuddy",
+            "install",
+            "--package",
+            str(broken_source),
+            "--config-dir",
+            str(config_dir),
+            "--force",
+            check=False,
+        )
+        self.assertNotEqual(broken_result.returncode, 0)
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
+
     def test_communication_guidance_block_is_clean(self) -> None:
         from teamkit.cli import COMMUNICATION_GUIDANCE_BLOCK
 
         self.assertIn("SendMessage", COMMUNICATION_GUIDANCE_BLOCK)
         self.assertIn("--reply-to", COMMUNICATION_GUIDANCE_BLOCK)
-        for forbidden in ("必须回传", "完成后 SendMessage", "回传主理人"):
-            self.assertNotIn(forbidden, COMMUNICATION_GUIDANCE_BLOCK)
+        self.assertIn("必须通过 `SendMessage` 将完整结果回传主理人", COMMUNICATION_GUIDANCE_BLOCK)
         self.assertNotIn("{", COMMUNICATION_GUIDANCE_BLOCK)
         self.assertNotIn("}", COMMUNICATION_GUIDANCE_BLOCK)
 
@@ -823,7 +992,7 @@ class TeamKitCliTest(unittest.TestCase):
         self.assertTrue((package_dir / "settings.json").exists())
         self.assertTrue((package_dir / "skills" / "agent-team-builder" / "SKILL.md").exists())
         self.assertTrue((package_dir / "skills" / "agent-prompt-optimizer" / "SKILL.md").exists())
-        self.assertTrue((package_dir / "skills" / "agent-team-reviewer" / "SKILL.md").exists())
+        self.assertTrue((package_dir / "skills" / "agent-team-optimizer" / "SKILL.md").exists())
         source_skill_names = sorted(
             path.name
             for path in (ROOT / "skills").iterdir()
@@ -855,7 +1024,7 @@ class TeamKitCliTest(unittest.TestCase):
             [
                 "./skills/agent-prompt-optimizer",
                 "./skills/agent-team-builder",
-                "./skills/agent-team-reviewer",
+                "./skills/agent-team-optimizer",
                 "./skills/agents-teamkit-workbench-runtime",
             ],
         )
@@ -863,7 +1032,7 @@ class TeamKitCliTest(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn(
-            "skills: [agent-prompt-optimizer, agent-team-builder, agent-team-reviewer, agents-teamkit-workbench-runtime]",
+            "skills: [agent-prompt-optimizer, agent-team-builder, agent-team-optimizer, agents-teamkit-workbench-runtime]",
             lead_frontmatter,
         )
 
@@ -881,6 +1050,14 @@ class TeamKitCliTest(unittest.TestCase):
         installed_dir = Path(install_payload["installedDir"])
         marketplace = json.loads(Path(install_payload["marketplacePath"]).read_text(encoding="utf-8"))
         self.assertTrue(any(item["name"] == "agents-teamkit-workbench" for item in marketplace["plugins"]))
+        installed_runtime_skill = (
+            installed_dir / "skills" / "agents-teamkit-workbench-runtime" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            str(installed_dir / "skills" / "agents-teamkit-workbench-runtime" / "scripts" / "teamkit.py"),
+            installed_runtime_skill,
+        )
+        self.assertNotIn(".agents-teamkit-workbench.install-", installed_runtime_skill)
 
         wrapper_result = subprocess.run(
             [

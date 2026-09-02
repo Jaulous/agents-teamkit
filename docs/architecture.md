@@ -71,7 +71,7 @@ Provides guided creation and iteration:
 
 - `agent-team-builder`: interviews the user and creates or updates a team.
 - `agent-prompt-optimizer`: improves expert profiles after design or run feedback.
-- `agent-team-reviewer`: reviews existing team definitions for parallelism and communication issues.
+- `agent-team-optimizer`: reviews and optimizes existing multi-agent teams on any platform — communication patterns, scheduling efficiency, structure, and architecture fit — with per-change user approval.
 - future: `run-review`: reviews a completed run and suggests changes.
 
 ### Studio Layer

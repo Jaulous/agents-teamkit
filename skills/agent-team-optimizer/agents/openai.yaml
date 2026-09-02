@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Team Optimizer"
+  short_description: "Review and optimize an existing multi-agent team on any platform — communication, scheduling, structure, architecture fit"
+  default_prompt: "Use $agent-team-optimizer to review and optimize my existing agent team — check its communication, scheduling, structure, and whether the design fits the job"

@@ -92,7 +92,7 @@ This creates the WorkBuddy entry package:
 build/workbuddy/agents-teamkit-workbench/
   .codebuddy-plugin/plugin.json
   agents/
-  skills/agent-team-reviewer/
+  skills/agent-team-optimizer/
   skills/agent-team-builder/
   skills/agent-prompt-optimizer/
   skills/agents-teamkit-workbench-runtime/
@@ -123,6 +123,25 @@ bin/teamkit workbuddy export \
   --out build/workbuddy \
   --force
 ```
+
+TeamKit Core stays platform-neutral.  WorkBuddy-only capabilities are declared
+next to `team.yaml` in an optional `workbuddy.yaml`; they are not added to the
+Core team definition:
+
+```yaml
+skills:
+  - name: custom-skill
+    path: custom-skill
+    agents:
+      - evidence
+```
+
+Each declared Skill must be a directory containing `SKILL.md`.  The adapter
+copies it into `skills/<name>/`, adds the Skill only to the selected generated
+agents, and checks the complete reference closure before publishing.  Agent
+frontmatter, `plugin.json`, and avatar references are checked together, so a
+missing Skill or asset fails the export instead of producing a package that
+loads partially.
 
 This creates a WorkBuddy Team package:
 
@@ -166,6 +185,13 @@ It also registers the package in:
 ```
 
 After installation, restart WorkBuddy if the expert does not appear immediately in the expert center.
+
+Installation is transactional: TeamKit copies the source package to a staging
+directory under the WorkBuddy expert root, runs the TeamKit closure checks and
+WorkBuddy's bundled official validator, then atomically replaces the target
+package.  Existing installed files remain unchanged if any check fails.  The
+same staging-and-atomic publication rule is used by both `workbuddy export` and
+`workbuddy export-init`; `--force` never means "delete first".
 
 To remove an old or generated package:
 
@@ -211,6 +237,14 @@ Implemented now:
 - TeamKit team export to WorkBuddy Team package, including delivery guidance
 - local WorkBuddy expert installation and marketplace registration
 - bundled TeamKit command wrapper for deterministic run state
+
+The Builder and Optimizer Skills follow the same boundary.  Editing
+`team.yaml`, the graph, or TeamKit profiles is a Core operation; it does not
+implicitly re-export or reinstall a WorkBuddy package.  A WorkBuddy package is
+a separate publication target and must be explicitly requested and approved.
+The Workbench export currently carries only the TeamKit Builder, Team Optimizer,
+and Prompt Optimizer Skills; business-specific Skills remain outside this
+TeamKit scope.
 
 Not in scope for this iteration:
 

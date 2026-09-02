@@ -579,7 +579,7 @@ Responsibilities:
 
 - generate an installable `Agents TeamKit 工作台` WorkBuddy package
 - bundle every repository Skill (including `agent-team-builder`,
-  `agent-prompt-optimizer`, and `agent-team-reviewer`) plus a generic TeamKit
+  `agent-prompt-optimizer`, and `agent-team-optimizer`) plus a generic TeamKit
   command wrapper
 - include TeamKit docs, schema, and vendored CLI for self-contained team creation and validation
 

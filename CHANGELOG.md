@@ -2,6 +2,78 @@
 
 All notable changes to Agents TeamKit are documented here.
 
+## [Unreleased]
+
+This feature release repositions the team review skill as a platform-agnostic
+optimizer and renames it.
+
+### Changed
+
+- `agent-team-reviewer` is renamed to `agent-team-optimizer` and rewritten in
+  English at principle altitude: it now reviews and optimizes existing
+  multi-agent teams on any platform (TeamKit, WorkBuddy, Claude Code subagents,
+  Codex, custom orchestrators), covering communication topology, scheduling
+  efficiency, role/node structure, architecture fit, and standardization
+  hygiene — always preserving business functionality and applying changes only
+  per explicit user approval.
+- The workbench lead agent's standard workflow now routes "review or optimize
+  an existing team" requests to `agent-team-optimizer` (the skill was bundled
+  but unreferenced before).
+
+### Added
+
+- `references/review-rubric.md`: universal five-cluster, 27-dimension rubric
+  with a minimum viable scan, severity calibration, and cross-platform worked
+  examples.
+- `references/change-consent-protocol.md`: protected invariants, convention-vs-
+  clutter classification with uncertainty classifying upward, risk-tiered
+  consent (Tier 0 read-only through Tier 3 convention-touching with named
+  approval), change-plan template, and closure checklist. Directly prevents
+  recurrence of the silently-dissolved-shared-spec incident.
+- `references/annex-teamkit.md`: the former parallelism playbook plus the
+  mechanical TeamKit review checks and version gate, loaded only for
+  TeamKit v0.3 definitions as an evidence upgrade.
+
+### Builder revision (`agent-team-builder`)
+
+- Fixed the version-field treadmill: the definition guide now pins
+  `version: 0.3`, the team YAML spec example moved from `0.1` to `0.3`, the
+  example team follows, and the optimizer annex version gate is now
+  feature-aware (parallel semantics present) instead of trusting the field
+  value, which the validator never checks.
+- Removed the "unless the definition intentionally accepts" escape hatch on
+  mixed parallel/choice edges — the engine provides no command path that can
+  activate the parallel branch in that shape; it is now a flat prohibition.
+- Regenerated the expert-profile TeamKit Rules template against the current
+  command surface: `msg reply --reply-to`, `msg close`, `msg list`, `run
+  status`, `result publish` (archiving only), and `run close` — the previous
+  template could not finish a run.
+- Added a shape-verification gate before presenting the draft (output-section
+  producers, exception landing spots, paired parallel edges both ways,
+  edge-level `max_visits`, context consumers, coordinator overload), a
+  present-before-write ordering with an explicit adjustment loop, and a
+  validate-and-close step (`teamkit team validate` was never run by the skill
+  that generates the file).
+- Added parallel GOOD/BAD shape examples, the data-independence question, a
+  Good Shape Defaults section mirroring the optimizer rubric, the directory
+  model (`runs/` dropped from the recommended layout, `teamkit home`
+  referenced), and `team context remove`.
+- `docs/expert-runtime-rules.md` now carries the v0.3.3 delivery boundary
+  (ledger recording vs physical delivery via the host-native tool, reply-to
+  correlation) and `msg list`; the builder guide and generated profiles
+  inherit it.
+- Frontmatter triggers on both builder and optimizer now disambiguate the
+  shared "existing team" case: a request that names the change goes to
+  builder; a request for assessment or proposals goes to the optimizer.
+- Corrected the annex claim that `result publish` refuses multi-node runs;
+  since v0.3.2 it performs no run-state checks.
+
+### Migration
+
+- Installed Workbench packages keep the old `agent-team-reviewer` skill until
+  re-exported and reinstalled: rerun `workbuddy export-init` / `workbuddy
+  install --force`. Marketplace entries may show a stale duplicate before that.
+
 ## [0.3.4] - 2026-09-02
 
 This maintenance release fixes the WorkBuddy Workbench package skill export.

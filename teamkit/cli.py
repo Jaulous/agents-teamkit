@@ -2876,6 +2876,7 @@ COMMUNICATION_GUIDANCE_BLOCK = """## 消息送达
 
 - `msg send` / `msg reply` / `msg close` 只更新协议账本并返回消息 ID；记录写入账本不代表消息已经送达对方。
 - 消息真正送进对方会话，由发送成员调用平台原生成员通信工具完成：本团队平台成员通信工具为 `SendMessage`。发出消息时以 `msg send` 记账取得消息 ID，并通过 `SendMessage` 把主题、正文、相关 artifact/evidence 引用和消息 ID 发给对方。
+- 成员分析完成后，必须通过 `SendMessage` 将完整结果回传主理人；主理人不得代写成员结论。
 - 收到消息的成员使用 `run status`、`msg list` 读取账本上的完整上下文，再用 `msg reply --reply-to <原消息 ID>` 回复并关联原消息。
 - 只向团队通信许可范围内的成员发消息；一次只问一个问题；不默认广播。
 - 发出的请求没有收到回复时，由发送方按团队流程自行决定是否再次询问；送达与应答不是协议承诺，属于业务流程的职责。
@@ -3010,7 +3011,13 @@ skills: [{skill_list}]
 """
 
 
-def workbuddy_lead_markdown(ctx: TeamContext, package_name: str, lead_id: str, member_ids: dict[str, str]) -> str:
+def workbuddy_lead_markdown(
+    ctx: TeamContext,
+    package_name: str,
+    lead_id: str,
+    member_ids: dict[str, str],
+    skill_specs: list[dict[str, Any]] | None = None,
+) -> str:
     team = ctx.team.get("team", {}) or {}
     team_name = str(team.get("name") or team.get("id") or package_name)
     coordinator = str(ctx.process().get("coordinator") or ctx.process().get("lead") or "")
@@ -3045,6 +3052,10 @@ def workbuddy_lead_markdown(ctx: TeamContext, package_name: str, lead_id: str, m
             "Task Orchestrator",
             f"Coordinates the {team_name} expert team through TeamKit graph and topic commands.",
             180,
+            [
+                "teamkit-runtime",
+                *workbuddy_skill_names_for_expert(skill_specs or [], coordinator),
+            ],
         )
         + f"""
 # {team_name} - 主理人
@@ -3059,6 +3070,14 @@ def workbuddy_lead_markdown(ctx: TeamContext, package_name: str, lead_id: str, m
 
 可用命令包括 `team validate`、`run init/status/close`、`topic status/update`、`graph next/advance`、`msg`、`context`、`human`、`artifact`、`result` 以及 `batch init/next/update/status/recover`。账本文件只能由 TeamKit 命令修改；只有主理人或被明确授权者可以使用 `graph advance` 或 `topic update` 推进共享状态。
 `run status` 聚合当前 Graph actions、active nodes、next expert/task、消息、Context、artifact 和 human review 信息；`graph advance` 返回推进后的下一步信息。
+
+## 团队协作铁律
+
+1. 任务开始时必须由主理人亲自调用 `TeamCreate` 建立团队。
+2. 主理人必须使用真实 Agent ID 调用 `Agent` 调度成员，不得使用中文名或自造 ID。
+3. 成员必须独立完成自己的专业分析；主理人不得代写成员结论。
+4. 成员完成分析后，必须通过 `SendMessage` 将完整结果回传主理人；主理人收到后再汇总或转交下一阶段。
+5. 不得跳过成员、伪造成员结果或让成员绕过主理人进行跨成员直连。
 
 ## Graph Nodes
 
@@ -3084,7 +3103,13 @@ TeamKit coordinator expert id: `{coordinator or 'not configured'}`
     )
 
 
-def workbuddy_member_markdown(ctx: TeamContext, package_name: str, expert_id: str, agent_id: str) -> str:
+def workbuddy_member_markdown(
+    ctx: TeamContext,
+    package_name: str,
+    expert_id: str,
+    agent_id: str,
+    skill_specs: list[dict[str, Any]] | None = None,
+) -> str:
     expert = ctx.experts[expert_id]
     name = str(expert.get("name") or expert_id)
     profile_path = ctx.profile_path(expert)
@@ -3098,6 +3123,10 @@ def workbuddy_member_markdown(ctx: TeamContext, package_name: str, expert_id: st
             name,
             f"Handles the {name} responsibility in the {package_name} TeamKit workflow.",
             80,
+            [
+                "teamkit-runtime",
+                *workbuddy_skill_names_for_expert(skill_specs or [], expert_id),
+            ],
         )
         + f"""
 # {name}
@@ -3114,6 +3143,12 @@ def workbuddy_member_markdown(ctx: TeamContext, package_name: str, expert_id: st
 - 可使用 `{{{{TEAMKIT_SCRIPT}}}} context list` 读取已授权 Context Item，使用 `context add` 追加受管资料。
 - 可使用 `artifact publish` 发布可引用产出；消息正文应保持简洁并通过 `artifactRefs` 引用文件。
 - 不直接编辑 TeamKit ledgers；以 Topic、Graph、Message 状态为准。
+
+## WorkBuddy 回传要求
+
+- 独立完成主理人分派的专业分析，不代替其他成员作结论。
+- 分析完成后，必须通过 `SendMessage` 将完整结果回传主理人。
+- 回传内容至少包含结论、事实依据、引用的 Context/Artifact、未解决问题和是否需要人工介入。
 
 {COMMUNICATION_GUIDANCE_BLOCK}
 """
@@ -3193,7 +3228,8 @@ def workbuddy_init_agent_markdown(
 3. 当用户上传资料、指定专家可见范围或要求你推荐资料分配时，使用 `agent-team-builder` 的上下文管理流程，并通过 `agents-teamkit-workbench-runtime` 里的 `team context` 命令修改 `team.yaml`。
 4. 使用 `agents-teamkit-workbench-runtime` 校验和编译团队定义。
 5. 用户准备试用时，将该团队导出为 WorkBuddy Team 包并安装。
-6. 用户跑过真实任务后，使用 `agent-prompt-optimizer` 优化具体 Agent 定义。
+6. 用户要检查或优化一个已有多 Agent 团队（含其他平台上的）时，使用 `agent-team-optimizer`：先确认团队结构图和业务意图，再逐条给出经用户批准的优化改动。
+7. 用户跑过真实任务后，使用 `agent-prompt-optimizer` 优化具体 Agent 定义。
 
 ## 团队定义工作目录规则
 
@@ -3272,150 +3308,381 @@ def copy_if_exists(source: Path, target: Path) -> None:
             shutil.copyfile(source, target)
 
 
-def export_workbuddy_package(ctx: TeamContext, out_root: Path, package_name: str, force: bool = False) -> Path:
-    validate_or_raise(ctx)
-    package_dir = out_root.expanduser().resolve() / package_name
+def workbuddy_skill_specs(ctx: TeamContext) -> list[dict[str, Any]]:
+    """Read optional WorkBuddy-only skill declarations beside team.yaml.
+
+    TeamKit Core deliberately does not know about host skills.  A small
+    adapter manifest keeps that concern at the package boundary without
+    turning team.yaml into a host-specific configuration file.
+    """
+    config_path = ctx.root / "workbuddy.yaml"
+    if not config_path.exists():
+        return []
+    data = load_yaml(config_path)
+    raw_skills = data.get("skills", [])
+    if raw_skills in (None, []):
+        return []
+    if not isinstance(raw_skills, list):
+        raise TeamKitError(f"workbuddy.yaml skills must be a list: {config_path}")
+
+    specs: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, raw in enumerate(raw_skills):
+        if isinstance(raw, str):
+            name = Path(raw).name
+            source_value = raw
+            required_by: list[str] = []
+        elif isinstance(raw, dict):
+            name = str(raw.get("name") or "").strip()
+            source_value = str(raw.get("path") or raw.get("source") or "").strip()
+            required_by = raw.get("agents") or raw.get("required_by") or []
+            if not isinstance(required_by, list) or not all(isinstance(item, str) for item in required_by):
+                raise TeamKitError(
+                    f"workbuddy.yaml skills[{index}].agents must be a list of expert ids"
+                )
+        else:
+            raise TeamKitError(f"workbuddy.yaml skills[{index}] must be a string or object")
+
+        if not name:
+            raise TeamKitError(f"workbuddy.yaml skills[{index}].name is required")
+        if not ID_PATTERN.match(name):
+            raise TeamKitError(f"workbuddy.yaml skills[{index}].name is not a valid id: {name}")
+        if name == "teamkit-runtime":
+            raise TeamKitError("workbuddy.yaml must not redeclare the built-in teamkit-runtime skill")
+        if name in seen:
+            raise TeamKitError(f"duplicate WorkBuddy skill: {name}")
+        seen.add(name)
+        if not source_value:
+            raise TeamKitError(f"workbuddy.yaml skills[{index}].path is required")
+        source = (config_path.parent / source_value).expanduser().resolve()
+        if not source.is_dir() or not (source / "SKILL.md").is_file():
+            raise TeamKitError(f"WorkBuddy skill must be a directory containing SKILL.md: {source}")
+        for expert_id in required_by:
+            ctx.require_expert(expert_id)
+        specs.append({"name": name, "source": source, "agents": list(required_by)})
+    return specs
+
+
+def workbuddy_skill_names_for_expert(
+    specs: list[dict[str, Any]], expert_id: str
+) -> list[str]:
+    return [
+        str(spec["name"])
+        for spec in specs
+        if not spec.get("agents") or expert_id in spec.get("agents", [])
+    ]
+
+
+def copy_workbuddy_avatars(source_root: Path, target_root: Path) -> set[str]:
+    """Copy user-provided avatars and return the relative paths copied."""
+    source = source_root / "avatars"
+    if not source.is_dir():
+        return set()
+    target = target_root / "avatars"
+    copied: set[str] = set()
+    for path in source.rglob("*"):
+        if not path.is_file() or path.name in {".DS_Store", ".gitkeep"}:
+            continue
+        relative = path.relative_to(source)
+        destination = target / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, destination)
+        copied.add(str(Path("avatars") / relative))
+    return copied
+
+
+def validate_workbuddy_package_closure(package_dir: Path) -> None:
+    """Validate every generated package reference before it is installed."""
+    plugin_path = find_workbuddy_plugin_json(package_dir)
+    try:
+        plugin = json.loads(plugin_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise TeamKitError(f"invalid WorkBuddy plugin.json: {plugin_path}: {exc}") from exc
+
+    for field in ("agents", "skills"):
+        values = plugin.get(field, [])
+        if not isinstance(values, list):
+            raise TeamKitError(f"WorkBuddy plugin.json {field} must be a list")
+        for value in values:
+            if not isinstance(value, str):
+                raise TeamKitError(f"WorkBuddy plugin.json {field} entries must be strings")
+            relative = value[2:] if value.startswith("./") else value
+            path = package_dir / relative
+            if field == "skills":
+                path = path / "SKILL.md"
+            if not path.is_file():
+                raise TeamKitError(f"WorkBuddy package reference does not exist: {value}")
+
+    agent_names = {
+        Path(value[2:] if value.startswith("./") else value).stem
+        for value in plugin.get("agents", [])
+        if isinstance(value, str)
+    }
+    for agent_file in (package_dir / "agents").glob("*.md"):
+        try:
+            content = agent_file.read_text(encoding="utf-8")
+            frontmatter = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
+            metadata = yaml.safe_load(frontmatter.group(1)) if frontmatter else {}
+        except (OSError, yaml.YAMLError) as exc:
+            raise TeamKitError(f"cannot read WorkBuddy agent: {agent_file}: {exc}") from exc
+        if not isinstance(metadata, dict):
+            raise TeamKitError(f"invalid WorkBuddy agent frontmatter: {agent_file}")
+        if metadata.get("name") and metadata["name"] != agent_file.stem:
+            raise TeamKitError(
+                f"WorkBuddy agent name does not match filename: {agent_file.name}"
+            )
+        declared_skills = metadata.get("skills", []) or []
+        if not isinstance(declared_skills, list):
+            raise TeamKitError(f"WorkBuddy agent skills must be a list: {agent_file}")
+        for skill_name in declared_skills:
+            if not isinstance(skill_name, str) or not (package_dir / "skills" / skill_name / "SKILL.md").is_file():
+                raise TeamKitError(
+                    f"WorkBuddy agent {agent_file.name} references missing skill: {skill_name}"
+                )
+    if plugin.get("agentName") and plugin["agentName"] not in agent_names:
+        raise TeamKitError("WorkBuddy plugin.json agentName is not listed in agents")
+
+    references: list[str] = []
+    if isinstance(plugin.get("avatar"), str):
+        references.append(plugin["avatar"])
+    for member in plugin.get("members", []) or []:
+        if isinstance(member, dict) and isinstance(member.get("avatar"), str):
+            references.append(member["avatar"])
+    for relative in references:
+        if not (package_dir / relative).is_file():
+            raise TeamKitError(f"WorkBuddy package avatar reference does not exist: {relative}")
+
+
+def safe_install_paths(source: Path, target: Path) -> None:
+    source = source.resolve()
+    target = target.resolve()
+    if source == target:
+        raise TeamKitError("WorkBuddy install source and target must be different paths")
+    try:
+        source.relative_to(target)
+        source_inside_target = True
+    except ValueError:
+        source_inside_target = False
+    try:
+        target.relative_to(source)
+        target_inside_source = True
+    except ValueError:
+        target_inside_source = False
+    if source_inside_target or target_inside_source:
+        raise TeamKitError(
+            "WorkBuddy install source and target must not contain one another; "
+            f"source={source}, target={target}"
+        )
+
+
+def workbuddy_official_validator() -> Path | None:
+    candidate = (
+        workbuddy_app_path()
+        / "Contents"
+        / "Resources"
+        / "app.asar.unpacked"
+        / "resources"
+        / "builtin-skills"
+        / "expert-manager"
+        / "scripts"
+        / "validate_expert.py"
+    )
+    return candidate if candidate.is_file() else None
+
+
+def run_workbuddy_official_validator(package_dir: Path, config_dir: Path) -> None:
+    validator = workbuddy_official_validator()
+    if validator is None:
+        raise TeamKitError(
+            "WorkBuddy official validator not found; install validation cannot continue"
+        )
+    env = os.environ.copy()
+    env["WORKBUDDY_CONFIG_DIR"] = str(config_dir)
+    result = subprocess.run(
+        [sys.executable, str(validator), str(package_dir)],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+    if result.returncode != 0:
+        detail = (result.stdout or result.stderr or "official validator failed").strip()
+        raise TeamKitError(f"WorkBuddy official validation failed:\n{detail}")
+
+
+def finalize_export_directory(staging_dir: Path, package_dir: Path, force: bool) -> Path:
+    """Publish an export without deleting the previous export in place."""
+    backup_dir: Path | None = None
     if package_dir.exists():
         if not force:
             raise TeamKitError(f"WorkBuddy package already exists: {package_dir}; use --force")
-        shutil.rmtree(package_dir)
-    package_dir.mkdir(parents=True)
+        backup_dir = package_dir.parent / f".{package_dir.name}.backup-{uuid.uuid4().hex[:12]}"
+        os.replace(package_dir, backup_dir)
+    try:
+        os.replace(staging_dir, package_dir)
+    except Exception:
+        if backup_dir and backup_dir.exists() and not package_dir.exists():
+            os.replace(backup_dir, package_dir)
+        raise
+    return package_dir
 
-    team = ctx.team.get("team", {}) or {}
-    team_name = str(team.get("name") or package_name)
-    coordinator = str(ctx.process().get("coordinator") or ctx.process().get("lead") or "")
-    lead_id = workbuddy_lead_agent_id(package_name)
-    member_ids = {
-        expert_id: (lead_id if expert_id == coordinator else workbuddy_agent_id(package_name, expert_id))
-        for expert_id in ctx.experts
-    }
-    if coordinator not in ctx.experts:
-        first_expert = next(iter(ctx.experts), "")
-        if first_expert:
-            member_ids[first_expert] = lead_id
 
-    agents_dir = package_dir / "agents"
-    agents_dir.mkdir()
-    (agents_dir / f"{lead_id}.md").write_text(
-        workbuddy_lead_markdown(ctx, package_name, lead_id, member_ids),
-        encoding="utf-8",
-    )
-    for expert_id, agent_id in member_ids.items():
-        if agent_id == lead_id:
-            continue
-        (agents_dir / f"{agent_id}.md").write_text(
-            workbuddy_member_markdown(ctx, package_name, expert_id, agent_id),
+def export_workbuddy_package(ctx: TeamContext, out_root: Path, package_name: str, force: bool = False) -> Path:
+    validate_or_raise(ctx)
+    package_dir = out_root.expanduser().resolve() / package_name
+    skill_specs = workbuddy_skill_specs(ctx)
+    staging_dir = package_dir.parent / f".{package_name}.staging-{uuid.uuid4().hex[:12]}"
+    if staging_dir.exists():
+        shutil.rmtree(staging_dir)
+    staging_dir.mkdir(parents=True)
+
+    try:
+        team = ctx.team.get("team", {}) or {}
+        team_name = str(team.get("name") or package_name)
+        coordinator = str(ctx.process().get("coordinator") or ctx.process().get("lead") or "")
+        lead_id = workbuddy_lead_agent_id(package_name)
+        member_ids = {
+            expert_id: (lead_id if expert_id == coordinator else workbuddy_agent_id(package_name, expert_id))
+            for expert_id in ctx.experts
+        }
+        if coordinator not in ctx.experts:
+            first_expert = next(iter(ctx.experts), "")
+            if first_expert:
+                member_ids[first_expert] = lead_id
+
+        agents_dir = staging_dir / "agents"
+        agents_dir.mkdir()
+        (agents_dir / f"{lead_id}.md").write_text(
+            workbuddy_lead_markdown(ctx, package_name, lead_id, member_ids, skill_specs),
             encoding="utf-8",
         )
+        for expert_id, agent_id in member_ids.items():
+            if agent_id == lead_id:
+                continue
+            (agents_dir / f"{agent_id}.md").write_text(
+                workbuddy_member_markdown(ctx, package_name, expert_id, agent_id, skill_specs),
+                encoding="utf-8",
+            )
 
-    skill_dir = package_dir / "skills" / "teamkit-runtime"
-    (skill_dir / "scripts").mkdir(parents=True)
-    (skill_dir / "SKILL.md").write_text(workbuddy_runtime_skill_text(package_name), encoding="utf-8")
-    wrapper = skill_dir / "scripts" / "teamkit.py"
-    team_id = str((ctx.team.get("team", {}) or {}).get("id") or package_name)
-    wrapper.write_text(workbuddy_teamkit_wrapper_text(team_id), encoding="utf-8")
-    wrapper.chmod(0o755)
+        skill_dir = staging_dir / "skills" / "teamkit-runtime"
+        (skill_dir / "scripts").mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(workbuddy_runtime_skill_text(package_name), encoding="utf-8")
+        wrapper = skill_dir / "scripts" / "teamkit.py"
+        team_id = str((ctx.team.get("team", {}) or {}).get("id") or package_name)
+        wrapper.write_text(workbuddy_teamkit_wrapper_text(team_id), encoding="utf-8")
+        wrapper.chmod(0o755)
+        for spec in skill_specs:
+            copy_workbuddy_skill(
+                spec["source"], staging_dir / "skills" / str(spec["name"]), "Read,Bash"
+            )
 
-    workspace = package_dir / "teamkit-workspace"
-    workspace.mkdir()
-    shutil.copyfile(ctx.team_file, workspace / "team.yaml")
-    copy_if_exists(ctx.root / "experts", workspace / "experts")
-    copy_if_exists(ctx.root / "references", workspace / "references")
-    copy_if_exists(ctx.root / "contexts", workspace / "contexts")
+        workspace = staging_dir / "teamkit-workspace"
+        workspace.mkdir()
+        shutil.copyfile(ctx.team_file, workspace / "team.yaml")
+        copy_if_exists(ctx.root / "experts", workspace / "experts")
+        copy_if_exists(ctx.root / "references", workspace / "references")
+        copy_if_exists(ctx.root / "contexts", workspace / "contexts")
 
-    vendor_teamkit = package_dir / "vendor" / "teamkit" / "teamkit"
-    vendor_teamkit.mkdir(parents=True)
-    source_teamkit = Path(__file__).resolve().parent
-    shutil.copyfile(source_teamkit / "cli.py", vendor_teamkit / "cli.py")
-    shutil.copyfile(source_teamkit / "__init__.py", vendor_teamkit / "__init__.py")
+        vendor_teamkit = staging_dir / "vendor" / "teamkit" / "teamkit"
+        vendor_teamkit.mkdir(parents=True)
+        source_teamkit = Path(__file__).resolve().parent
+        shutil.copyfile(source_teamkit / "cli.py", vendor_teamkit / "cli.py")
+        shutil.copyfile(source_teamkit / "__init__.py", vendor_teamkit / "__init__.py")
 
-    (package_dir / "avatars").mkdir()
-    (package_dir / "avatars" / ".gitkeep").touch()
-    (package_dir / "settings.json").write_text(json.dumps({"agent": lead_id}, indent=2) + "\n", encoding="utf-8")
+        copied_avatars = copy_workbuddy_avatars(ctx.root, staging_dir)
 
-    agents = [f"./agents/{lead_id}.md"] + [
-        f"./agents/{agent_id}.md"
-        for expert_id, agent_id in member_ids.items()
-        if agent_id != lead_id
-    ]
-    member_agents = [
-        agent_id
-        for agent_id in member_ids.values()
-        if agent_id != lead_id
-    ]
-    plugin = {
-        "name": package_name,
-        "version": __version__,
-        "description": workbuddy_team_description(ctx),
-        "author": {"name": "Agents TeamKit contributors", "url": "https://github.com/Jaulous/agents-teamkit"},
-        "agents": agents,
-        "skills": ["./skills/teamkit-runtime"],
-        "expertType": "team",
-        "agentName": lead_id,
-        "teamInfo": {"leadAgent": lead_id, "memberAgents": member_agents},
-        "displayName": {"en": team_name, "zh": team_name},
-        "profession": {"en": team_name, "zh": team_name},
-        "displayDescription": {
-            "en": workbuddy_display_description_en(ctx),
-            "zh": workbuddy_display_description_zh(),
-        },
-        "avatar": "avatars/team.png",
-        "categoryId": workbuddy_category_for(ctx),
-        "defaultInitPrompt": {
-            "zh": "请使用这个 Agent 团队处理一个任务，并先帮我初始化运行空间。",
-            "en": "Use this agent team to handle one task and initialize the run workspace first.",
-        },
-        "plugin": package_name,
-        "tags": [
-            {"en": "Multi-agent", "zh": "多专家协作"},
-            {"en": "Team", "zh": "团队编排"},
-            {"en": "Context", "zh": "上下文分配"},
-        ],
-        "quickPrompts": [
-            {
+        (staging_dir / "settings.json").write_text(json.dumps({"agent": lead_id}, indent=2) + "\n", encoding="utf-8")
+
+        agents = [f"./agents/{lead_id}.md"] + [
+            f"./agents/{agent_id}.md"
+            for expert_id, agent_id in member_ids.items()
+            if agent_id != lead_id
+        ]
+        member_agents = [
+            agent_id
+            for agent_id in member_ids.values()
+            if agent_id != lead_id
+        ]
+        avatar_refs = set(copied_avatars)
+        team_avatar = "avatars/team.png" if "avatars/team.png" in avatar_refs else ""
+        lead_avatar = f"avatars/{lead_id}.png" if f"avatars/{lead_id}.png" in avatar_refs else ""
+        plugin = {
+            "name": package_name,
+            "version": __version__,
+            "description": workbuddy_team_description(ctx),
+            "author": {"name": "Agents TeamKit contributors", "url": "https://github.com/Jaulous/agents-teamkit"},
+            "agents": agents,
+            "skills": ["./skills/teamkit-runtime"] + [f"./skills/{spec['name']}" for spec in skill_specs],
+            "expertType": "team",
+            "agentName": lead_id,
+            "teamInfo": {"leadAgent": lead_id, "memberAgents": member_agents},
+            "displayName": {"en": team_name, "zh": team_name},
+            "profession": {"en": team_name, "zh": team_name},
+            "displayDescription": {
+                "en": workbuddy_display_description_en(ctx),
+                "zh": workbuddy_display_description_zh(),
+            },
+            **({"avatar": team_avatar} if team_avatar else {}),
+            "categoryId": workbuddy_category_for(ctx),
+            "defaultInitPrompt": {
                 "zh": "请使用这个 Agent 团队处理一个任务，并先帮我初始化运行空间。",
                 "en": "Use this agent team to handle one task and initialize the run workspace first.",
             },
-            {
-                "zh": "帮我查看当前 run 的 Topic、Graph、Context 和待处理消息。",
-                "en": "Show the current run topic, graph, context, and open messages.",
-            },
-            {
-                "zh": "根据这次运行结果，帮我优化团队成员定义。",
-                "en": "Improve the team member definitions based on this run.",
-            },
-        ],
-        "members": [
-            {
-                "id": lead_id,
-                "displayName": {"en": team_name, "zh": team_name},
-                "profession": {"en": "Task Orchestrator", "zh": "任务编排官"},
-                "avatar": f"avatars/{lead_id}.png",
-                "role": "lead",
-            },
-            *[
-                {
-                    "id": agent_id,
-                    "displayName": {
-                        "en": str(ctx.experts[expert_id].get("name") or expert_id),
-                        "zh": str(ctx.experts[expert_id].get("name") or expert_id),
-                    },
-                    "profession": {
-                        "en": str(ctx.experts[expert_id].get("name") or expert_id),
-                        "zh": str(ctx.experts[expert_id].get("name") or expert_id),
-                    },
-                    "avatar": f"avatars/{agent_id}.png",
-                    "role": "member",
-                }
-                for expert_id, agent_id in member_ids.items()
-                if agent_id != lead_id
+            "plugin": package_name,
+            "tags": [
+                {"en": "Multi-agent", "zh": "多专家协作"},
+                {"en": "Team", "zh": "团队编排"},
+                {"en": "Context", "zh": "上下文分配"},
             ],
-        ],
-    }
-    write_json(package_dir / ".codebuddy-plugin" / "plugin.json", plugin)
-    readme_text = str(team.get("readme") or "")
-    (package_dir / "README.md").write_text(
-        readme_text or f"""# {team_name}
+            "quickPrompts": [
+                {
+                    "zh": "请使用这个 Agent 团队处理一个任务，并先帮我初始化运行空间。",
+                    "en": "Use this agent team to handle one task and initialize the run workspace first.",
+                },
+                {
+                    "zh": "帮我查看当前 run 的 Topic、Graph、Context 和待处理消息。",
+                    "en": "Show the current run topic, graph, context, and open messages.",
+                },
+                {
+                    "zh": "根据这次运行结果，帮我优化团队成员定义。",
+                    "en": "Improve the team member definitions based on this run.",
+                },
+            ],
+            "members": [
+                {
+                    "id": lead_id,
+                    "displayName": {"en": team_name, "zh": team_name},
+                    "profession": {"en": "Task Orchestrator", "zh": "任务编排官"},
+                    **({"avatar": lead_avatar} if lead_avatar else {}),
+                    "role": "lead",
+                },
+                *[
+                    {
+                        "id": agent_id,
+                        "displayName": {
+                            "en": str(ctx.experts[expert_id].get("name") or expert_id),
+                            "zh": str(ctx.experts[expert_id].get("name") or expert_id),
+                        },
+                        "profession": {
+                            "en": str(ctx.experts[expert_id].get("name") or expert_id),
+                            "zh": str(ctx.experts[expert_id].get("name") or expert_id),
+                        },
+                        **(
+                            {"avatar": f"avatars/{agent_id}.png"}
+                            if f"avatars/{agent_id}.png" in avatar_refs
+                            else {}
+                        ),
+                        "role": "member",
+                    }
+                    for expert_id, agent_id in member_ids.items()
+                    if agent_id != lead_id
+                ],
+            ],
+        }
+        write_json(staging_dir / ".codebuddy-plugin" / "plugin.json", plugin)
+        readme_text = str(team.get("readme") or "")
+        (staging_dir / "README.md").write_text(
+            readme_text or f"""# {team_name}
 
 This is a WorkBuddy Team expert package generated from Agents TeamKit.
 
@@ -3423,9 +3690,14 @@ This is a WorkBuddy Team expert package generated from Agents TeamKit.
 
 Ask the team to initialize a task run, then use Topic, Graph, Context, Message, Human, Artifact, and Result commands through the bundled TeamKit Runtime skill.
 """,
-        encoding="utf-8",
-    )
-    return package_dir
+            encoding="utf-8",
+        )
+        validate_workbuddy_package_closure(staging_dir)
+        return finalize_export_directory(staging_dir, package_dir, force)
+    except Exception:
+        if staging_dir.exists():
+            shutil.rmtree(staging_dir)
+        raise
 
 
 def export_workbuddy_init_package(
@@ -3434,116 +3706,122 @@ def export_workbuddy_init_package(
     force: bool = False,
 ) -> Path:
     package_name = kebab_case(package_name, "agents-teamkit-workbench")
-    package_dir = out_root.expanduser().resolve() / package_name
-    if package_dir.exists():
-        if not force:
-            raise TeamKitError(f"WorkBuddy package already exists: {package_dir}; use --force")
-        shutil.rmtree(package_dir)
-    package_dir.mkdir(parents=True)
+    out_root = out_root.expanduser().resolve()
+    package_dir = out_root / package_name
+    if package_dir.exists() and not force:
+        raise TeamKitError(f"WorkBuddy package already exists: {package_dir}; use --force")
+    out_root.mkdir(parents=True, exist_ok=True)
+    staging_dir = out_root / f".{package_name}.staging-{uuid.uuid4().hex[:12]}"
+    staging_dir.mkdir(parents=True)
 
-    repo_root = Path(__file__).resolve().parent.parent
-    workbench_skill_names = workbuddy_init_skill_names(repo_root)
-    agent_id = kebab_case(f"{package_name}-lead", "agents-teamkit-workbench-lead")
-    agents_dir = package_dir / "agents"
-    agents_dir.mkdir()
-    (agents_dir / f"{agent_id}.md").write_text(
-        workbuddy_init_agent_markdown(package_name, agent_id, workbench_skill_names),
-        encoding="utf-8",
-    )
-
-    skills_dir = package_dir / "skills"
-    for skill_name in workbench_skill_names:
-        copy_workbuddy_skill(
-            repo_root / "skills" / skill_name,
-            skills_dir / skill_name,
-            "Read,Write,Edit,Bash",
+    try:
+        repo_root = Path(__file__).resolve().parent.parent
+        workbench_skill_names = workbuddy_init_skill_names(repo_root)
+        agent_id = kebab_case(f"{package_name}-lead", "agents-teamkit-workbench-lead")
+        agents_dir = staging_dir / "agents"
+        agents_dir.mkdir()
+        (agents_dir / f"{agent_id}.md").write_text(
+            workbuddy_init_agent_markdown(package_name, agent_id, workbench_skill_names),
+            encoding="utf-8",
         )
-    runtime_dir = skills_dir / "agents-teamkit-workbench-runtime"
-    (runtime_dir / "scripts").mkdir(parents=True)
-    (runtime_dir / "SKILL.md").write_text(workbuddy_init_runtime_skill_text(), encoding="utf-8")
-    wrapper = runtime_dir / "scripts" / "teamkit.py"
-    wrapper.write_text(workbuddy_init_wrapper_text(), encoding="utf-8")
-    wrapper.chmod(0o755)
 
-    vendor_teamkit = package_dir / "vendor" / "teamkit" / "teamkit"
-    vendor_teamkit.mkdir(parents=True)
-    source_teamkit = Path(__file__).resolve().parent
-    shutil.copyfile(source_teamkit / "cli.py", vendor_teamkit / "cli.py")
-    shutil.copyfile(source_teamkit / "__init__.py", vendor_teamkit / "__init__.py")
+        skills_dir = staging_dir / "skills"
+        for skill_name in workbench_skill_names:
+            copy_workbuddy_skill(
+                repo_root / "skills" / skill_name,
+                skills_dir / skill_name,
+                "Read,Write,Edit,Bash",
+            )
+        runtime_dir = skills_dir / "agents-teamkit-workbench-runtime"
+        (runtime_dir / "scripts").mkdir(parents=True)
+        (runtime_dir / "SKILL.md").write_text(workbuddy_init_runtime_skill_text(), encoding="utf-8")
+        wrapper = runtime_dir / "scripts" / "teamkit.py"
+        wrapper.write_text(workbuddy_init_wrapper_text(), encoding="utf-8")
+        wrapper.chmod(0o755)
 
-    copy_if_exists(repo_root / "docs", package_dir / "docs")
-    copy_if_exists(repo_root / "schemas", package_dir / "schemas")
+        vendor_teamkit = staging_dir / "vendor" / "teamkit" / "teamkit"
+        vendor_teamkit.mkdir(parents=True)
+        source_teamkit = Path(__file__).resolve().parent
+        shutil.copyfile(source_teamkit / "cli.py", vendor_teamkit / "cli.py")
+        shutil.copyfile(source_teamkit / "__init__.py", vendor_teamkit / "__init__.py")
 
-    (package_dir / "avatars").mkdir()
-    (package_dir / "avatars" / ".gitkeep").touch()
-    (package_dir / "settings.json").write_text(json.dumps({"agent": agent_id}, indent=2) + "\n", encoding="utf-8")
+        copy_if_exists(repo_root / "docs", staging_dir / "docs")
+        copy_if_exists(repo_root / "schemas", staging_dir / "schemas")
 
-    plugin = {
-        "name": package_name,
-        "version": __version__,
-        "description": "Agents TeamKit workbench package for creating, managing, validating, exporting, and improving multi-agent teams for WorkBuddy trial use.",
-        "author": {"name": "Agents TeamKit contributors", "url": "https://github.com/Jaulous/agents-teamkit"},
-        "agents": [f"./agents/{agent_id}.md"],
-        "skills": [
-            *[f"./skills/{skill_name}" for skill_name in workbench_skill_names],
-            "./skills/agents-teamkit-workbench-runtime",
-        ],
-        "expertType": "team",
-        "agentName": agent_id,
-        "teamInfo": {"leadAgent": agent_id, "memberAgents": []},
-        "displayName": {"en": "Agents TeamKit Workbench", "zh": "Agents TeamKit 工作台"},
-        "profession": {"en": "Agents TeamKit Workbench", "zh": "Agents TeamKit 工作台"},
-        "displayDescription": {
-            "en": "Create, manage context visibility, validate, export, and improve Agents TeamKit multi-agent teams for WorkBuddy trial use.",
-            "zh": "创建团队、分配上下文、校验导出并优化 Agents TeamKit 多 Agent 团队",
-        },
-        "avatar": "avatars/team.png",
-        "categoryId": "04-DataAI",
-        "defaultInitPrompt": {
-            "zh": "帮我创建一个新的多 Agent 团队。",
-            "en": "Help me create a new multi-agent team.",
-        },
-        "plugin": package_name,
-        "tags": [
-            {"en": "Agents TeamKit", "zh": "Agents TeamKit"},
-            {"en": "Team Builder", "zh": "团队创建"},
-            {"en": "Prompt Optimizer", "zh": "提示词优化"},
-        ],
-        "quickPrompts": [
-            {
+        # Do not create a placeholder avatar directory that masks missing files.
+        (staging_dir / "settings.json").write_text(
+            json.dumps({"agent": agent_id}, indent=2) + "\n", encoding="utf-8"
+        )
+
+        plugin = {
+            "name": package_name,
+            "version": __version__,
+            "description": "Agents TeamKit workbench package for creating, managing, validating, exporting, and improving multi-agent teams for WorkBuddy trial use.",
+            "author": {"name": "Agents TeamKit contributors", "url": "https://github.com/Jaulous/agents-teamkit"},
+            "agents": [f"./agents/{agent_id}.md"],
+            "skills": [
+                *[f"./skills/{skill_name}" for skill_name in workbench_skill_names],
+                "./skills/agents-teamkit-workbench-runtime",
+            ],
+            "expertType": "team",
+            "agentName": agent_id,
+            "teamInfo": {"leadAgent": agent_id, "memberAgents": []},
+            "displayName": {"en": "Agents TeamKit Workbench", "zh": "Agents TeamKit 工作台"},
+            "profession": {"en": "Agents TeamKit Workbench", "zh": "Agents TeamKit 工作台"},
+            "displayDescription": {
+                "en": "Create, manage context visibility, validate, export, and improve Agents TeamKit multi-agent teams for WorkBuddy trial use.",
+                "zh": "创建团队、分配上下文、校验导出并优化 Agents TeamKit 多 Agent 团队",
+            },
+            "categoryId": "04-DataAI",
+            "defaultInitPrompt": {
                 "zh": "帮我创建一个新的多 Agent 团队。",
                 "en": "Help me create a new multi-agent team.",
             },
-            {
-                "zh": "帮我给团队资料分配可见专家。",
-                "en": "Help me assign team materials to the right experts.",
-            },
-            {
-                "zh": "帮我把已经定义好的团队导出成 WorkBuddy 团队包。",
-                "en": "Export my defined team as a WorkBuddy team package.",
-            },
-        ],
-        "members": [
-            {
-                "id": agent_id,
-                "displayName": {"en": "Agents TeamKit Workbench", "zh": "Agents TeamKit 工作台"},
-                "profession": {"en": "Agents TeamKit Team Workbench", "zh": "Agents TeamKit 团队工作台"},
-                "avatar": f"avatars/{agent_id}.png",
-                "role": "lead",
-            }
-        ],
-    }
-    write_json(package_dir / ".codebuddy-plugin" / "plugin.json", plugin)
-    (package_dir / "README.md").write_text(
-        """# Agents TeamKit 工作台
+            "plugin": package_name,
+            "tags": [
+                {"en": "Agents TeamKit", "zh": "Agents TeamKit"},
+                {"en": "Team Builder", "zh": "团队创建"},
+                {"en": "Prompt Optimizer", "zh": "提示词优化"},
+            ],
+            "quickPrompts": [
+                {
+                    "zh": "帮我创建一个新的多 Agent 团队。",
+                    "en": "Help me create a new multi-agent team.",
+                },
+                {
+                    "zh": "帮我给团队资料分配可见专家。",
+                    "en": "Help me assign team materials to the right experts.",
+                },
+                {
+                    "zh": "帮我把已经定义好的团队导出成 WorkBuddy 团队包。",
+                    "en": "Export my defined team as a WorkBuddy team package.",
+                },
+            ],
+            "members": [
+                {
+                    "id": agent_id,
+                    "displayName": {"en": "Agents TeamKit Workbench", "zh": "Agents TeamKit 工作台"},
+                    "profession": {"en": "Agents TeamKit Team Workbench", "zh": "Agents TeamKit 团队工作台"},
+                    "role": "lead",
+                }
+            ],
+        }
+        write_json(staging_dir / ".codebuddy-plugin" / "plugin.json", plugin)
+        (staging_dir / "README.md").write_text(
+            """# Agents TeamKit 工作台
 
 This is the WorkBuddy Skill carrier for Agents TeamKit team creation and management.
 
 Use it to create or update a user-owned multi-agent team, manage Context Item visibility, validate the generated `team.yaml`, export that team as a WorkBuddy Team package, and improve agent profiles after real runs.
 """,
-        encoding="utf-8",
-    )
-    return package_dir
+            encoding="utf-8",
+        )
+        validate_workbuddy_package_closure(staging_dir)
+        return finalize_export_directory(staging_dir, package_dir, force)
+    except Exception:
+        if staging_dir.exists():
+            shutil.rmtree(staging_dir)
+        raise
 
 
 def cmd_workbuddy_export(args: argparse.Namespace) -> int:
@@ -3705,11 +3983,19 @@ def ensure_workbuddy_runtime_env(package_dir: Path) -> Path | None:
     return runtime_dir
 
 
-def render_installed_teamkit_script_paths(target: Path) -> None:
+def render_installed_teamkit_script_paths(
+    target: Path,
+    installed_root: Path | None = None,
+) -> None:
     wrappers = [path for path in target.glob("skills/*/scripts/teamkit.py") if path.is_file()]
     if not wrappers:
         return
-    replacement = str(wrappers[0].resolve())
+    wrapper = wrappers[0]
+    if installed_root is None:
+        replacement = str(wrapper.resolve())
+    else:
+        relative_wrapper = wrapper.relative_to(target)
+        replacement = str((installed_root / relative_wrapper).resolve())
     # Render generated prompt-bearing files only. Vendored cli.py contains the
     # template source itself and must remain portable for future exports.
     roots = [target / "agents", target / "skills"]
@@ -3735,27 +4021,46 @@ def cmd_workbuddy_install(args: argparse.Namespace) -> int:
     package_name = str(plugin_data.get("name") or source.name)
     config_dir = workbuddy_config_dir(args.config_dir)
     target = workbuddy_plugins_dir(config_dir) / package_name
-    if target.exists():
-        if not args.force:
-            raise TeamKitError(f"WorkBuddy package already installed: {target}; use --force")
-        legacy_runs = target / "teamkit-workspace" / "runs"
-        if legacy_runs.exists():
-            retained = [item for item in legacy_runs.iterdir() if item.name != ".gitkeep"]
-            if retained:
-                print(f"warning: {legacy_runs} contains runtime data and will be deleted", file=sys.stderr)
-        shutil.rmtree(target)
+    safe_install_paths(source, target)
+    if target.exists() and not args.force:
+        raise TeamKitError(f"WorkBuddy package already installed: {target}; use --force")
+
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, target)
-    render_installed_teamkit_script_paths(target)
-    runtime_dir = ensure_workbuddy_runtime_env(target)
-    manifest_path = register_workbuddy_package(target, config_dir, args.session_id or "teamkit-local-install")
+    staging = target.parent / f".{package_name}.install-{uuid.uuid4().hex[:12]}"
+    if staging.exists():
+        shutil.rmtree(staging)
+    try:
+        shutil.copytree(source, staging)
+        validate_workbuddy_package_closure(staging)
+        run_workbuddy_official_validator(staging, config_dir)
+        # Render the path that will exist after the atomic publish. Rendering
+        # against ``staging`` leaves a dead install-hash path in SKILL.md once
+        # the staging directory is renamed into its final package location.
+        render_installed_teamkit_script_paths(staging, target)
+        runtime_dir = ensure_workbuddy_runtime_env(staging)
+        installed = finalize_export_directory(staging, target, args.force)
+        try:
+            manifest_path = register_workbuddy_package(
+                installed, config_dir, args.session_id or "teamkit-local-install"
+            )
+        except Exception:
+            # The package is still recoverable in the adjacent backup created by
+            # finalize_export_directory; surface the registration failure.
+            raise
+    except Exception:
+        if staging.exists():
+            shutil.rmtree(staging)
+        raise
     result = {
         "installedDir": str(target),
         "marketplacePath": str(manifest_path),
         "packageName": package_name,
     }
     if runtime_dir:
-        result["runtimeDir"] = str(runtime_dir)
+        # ``runtime_dir`` is created inside the staging tree.  Publish the
+        # final path instead of leaking the one-shot staging directory in the
+        # CLI response after the atomic rename.
+        result["runtimeDir"] = str(target / runtime_dir.relative_to(staging))
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
