@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agents-teamkit"
-version = "0.3.4"
+version = "0.4.0"
 description = "Agents TeamKit is a lightweight multi-agent team architecture kit for business workflows."
 readme = "README.md"
 license = { file = "LICENSE" }

@@ -2,8 +2,8 @@
 set -euo pipefail
 
 TEAMKIT_REPO="${TEAMKIT_REPO:-Jaulous/agents-teamkit}"
-TEAMKIT_REF="${TEAMKIT_REF:-v0.3.4}"
-TEAMKIT_PYTHON_BIN="${TEAMKIT_PYTHON_BIN:-python3}"
+TEAMKIT_REF="${TEAMKIT_REF:-v0.4.0}"
+TEAMKIT_PYTHON_BIN="${TEAMKIT_PYTHON_BIN:-}"
 TEAMKIT_PACKAGE_NAME="${TEAMKIT_PACKAGE_NAME:-agents-teamkit-workbench}"
 TEAMKIT_SOURCE_DIR="${TEAMKIT_SOURCE_DIR:-}"
 TEAMKIT_WORKBUDDY_CONFIG_DIR="${TEAMKIT_WORKBUDDY_CONFIG_DIR:-${WORKBUDDY_CONFIG_DIR:-}}"
@@ -21,20 +21,20 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "missing required command: $1"
 }
 
-pip_install() {
-  local proxy_env
-  proxy_env="${ALL_PROXY:-}${HTTPS_PROXY:-}${HTTP_PROXY:-}${all_proxy:-}${https_proxy:-}${http_proxy:-}"
-  if [[ "$proxy_env" == *socks* || "$proxy_env" == *SOCKS* ]]; then
-    env -u ALL_PROXY -u HTTPS_PROXY -u HTTP_PROXY -u all_proxy -u https_proxy -u http_proxy \
-      PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1 "$venv_python" -m pip "$@"
-    return $?
-  fi
-  if env PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1 "$venv_python" -m pip "$@"; then
-    return 0
-  fi
-  log "Retrying pip without proxy environment variables..."
-  env -u ALL_PROXY -u HTTPS_PROXY -u HTTP_PROXY -u all_proxy -u https_proxy -u http_proxy \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1 "$venv_python" -m pip "$@"
+pick_python() {
+  # TeamKit vendors its only dependency, so any Python 3.9+ works. Prefer the
+  # Python that WorkBuddy ships, then whatever is on PATH.
+  local config candidate
+  config="${TEAMKIT_WORKBUDDY_CONFIG_DIR:-$HOME/.workbuddy}"
+  for candidate in "$TEAMKIT_PYTHON_BIN" "$config/binaries/python/envs/default/bin/python3" python3 python; do
+    [ -n "$candidate" ] || continue
+    if command -v "$candidate" >/dev/null 2>&1 \
+      && "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
 }
 
 resolve_local_source() {
@@ -68,7 +68,7 @@ download_source() {
 need_cmd curl
 need_cmd tar
 need_cmd find
-need_cmd "$TEAMKIT_PYTHON_BIN"
+python_bin="$(pick_python)" || fail "Python 3.9+ is required (set TEAMKIT_PYTHON_BIN)"
 
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/teamkit-install.XXXXXX")"
 trap 'rm -rf "$tmp_dir"' EXIT
@@ -83,23 +83,15 @@ fi
 
 [ -f "$source_dir/pyproject.toml" ] || fail "TeamKit source is missing pyproject.toml: $source_dir"
 
-log "Preparing temporary TeamKit Python runtime..."
-"$TEAMKIT_PYTHON_BIN" -m venv "$tmp_dir/venv"
-venv_python="$tmp_dir/venv/bin/python"
-[ -x "$venv_python" ] || fail "venv python was not created at $venv_python"
-
-pip_install install "PyYAML>=6.0" >/dev/null
-"$venv_python" -c "import yaml" || fail "PyYAML is not available in the temporary TeamKit runtime"
-
 build_root="$tmp_dir/build/workbuddy"
 log "Exporting Agents TeamKit Workbench package..."
-"$venv_python" "$source_dir/bin/teamkit" workbuddy export-init \
+"$python_bin" "$source_dir/bin/teamkit" workbuddy export-init \
   --out "$build_root" \
   --name "$TEAMKIT_PACKAGE_NAME" \
   --force >/dev/null
 
 install_args=(
-  "$venv_python"
+  "$python_bin"
   "$source_dir/bin/teamkit"
   "workbuddy"
   "install"
@@ -118,6 +110,7 @@ log "$install_output"
 
 log ""
 log "Agents TeamKit Workbench installed."
-log "Open WorkBuddy and look for: Agents TeamKit 工作台"
+log "Open WorkBuddy and look for: Agents TeamKit 工作台 (restart WorkBuddy if it does not appear)"
+log "Check the setup any time with: $source_dir/bin/teamkit workbuddy doctor"
 log ""
 log "Update later with the same command. Override source with TEAMKIT_REPO, TEAMKIT_REF, or TEAMKIT_SOURCE_DIR when needed."

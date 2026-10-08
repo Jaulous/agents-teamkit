@@ -4,12 +4,94 @@ All notable changes to Agents TeamKit are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/) (pre-1.0: a minor bump may break).
 
-## [Unreleased]
+## [0.4.0] - 2026-10-08
 
-This feature release repositions the team review skill as a platform-agnostic
-optimizer and renames it.
+This release makes the team protocol actually hold on WorkBuddy. Up to v0.3
+every agent had to record each message twice (`teamkit msg send` plus the
+native `SendMessage`); in production the two channels drifted apart, members
+were called as subagents outside the team, replies were never correlated, and
+runs stalled. v0.4 makes the platform's native tools the only transport and
+has TeamKit observe them.
+
+### Added
+
+- **Native sync (WorkBuddy).** Run state reads WorkBuddy's own Agent Teams
+  records — team config (members, spawn prompts), member inboxes, the lead
+  session transcript (WorkBuddy prunes the lead inbox) and the task list — and
+  writes them into the ledgers idempotently. Runs bind to the host session
+  automatically (`CODEBUDDY_SESSION_ID` -> native team `leadSessionId`), or with
+  `run bind` / `run init --native-team`. Commands: `workbuddy sync`,
+  `workbuddy teams`.
+- **Reply correlation.** A message from the recipient back to the requester
+  closes the requester's open required message (explicit `replyTo` and
+  `re=<id>` headers win; questions and escalations never close a request).
+  The `[TeamKit run=<id> node=<node>]` header attributes native messages to runs.
+- **Protocol violations** recorded as events: `unauthorized_route`,
+  `subagent_dispatch`, `unknown_member`, `duplicate_member` (respawn after a
+  failure is exempt), `noncanonical_member_name`; plus `member.spawned/completed/
+  failed/reactivated/respawned` and `native.task` events.
+- **`teamkit run audit`**: PASS / PASS_WITH_WARNINGS / FAIL / UNVERIFIED verdict
+  over ledger integrity, binding, attribution, violations, member results per
+  node, graph progress, forced advances, open requests and human input.
+- **`teamkit workbuddy doctor`**: read-only environment and package health check.
+- `graph advance --force --reason`, `run close --status completed|failed|cancelled`,
+  `human request --non-blocking`, `run status --no-sync`, `team validate --json`,
+  `run init --json` with `nextStep`, `teamkit --version`, `python -m teamkit`.
+- `nextStep` in `run status`: one sentence on what unblocks the run.
+- Graph validation warnings: unreachable nodes, mixed parallel/choice edges,
+  single-edge forks, joins without `join: all`; errors for invalid `relation`
+  and `join` values and duplicate edge ids.
+- `experts[].role` (one-line responsibility used in generated rosters).
+- `workbuddy.yaml` `display` section for card description, category, tags and
+  quick prompts.
+- Docs: `adapter-development.md`; `workbuddy-bridge.md` now records verified
+  WorkBuddy platform facts and the production failure modes.
 
 ### Changed
+
+- **Generated WorkBuddy prompts rewritten** to the official expert-team
+  specification: the lead embeds the coordinator's profile (previously dropped),
+  a roster with Agent IDs, an SOP compiled from the graph with the exact
+  `graph advance` command per edge (conditions, `max_visits`, forks, joins),
+  an eight-step run protocol, allowed routes and red lines. Members get their
+  profile, visible Context Items, report-back contract and allowed peers.
+  Agents run only `run init`, `graph advance`, `result publish`, `run close`.
+- Profiles hold business content only; legacy `## TeamKit Rules` sections are
+  stripped on export. Builder and prompt-optimizer skills updated accordingly.
+- **Runtime packaging**: TeamKit is vendored as a package with a pure-Python
+  PyYAML; a POSIX launcher picks `TEAMKIT_PYTHON`, WorkBuddy's bundled Python, or
+  `python3`. No venv, `pip` or network access at install or run time. Python 3.9+.
+- Install: official validator runs when present and is skipped with a warning
+  otherwise (`--strict` requires it); previous versions and uninstalled packages
+  move to `~/.workbuddy/teamkit-backups/` instead of being deleted; the
+  marketplace manifest is written atomically.
+- `teamkit/cli.py` split into `team`, `validation`, `graph`, `runs`,
+  `contexts`, `batch`, `plan`, `audit`, `fsutil` and `adapters/workbuddy/*`.
+- JSONL ledgers tolerate a damaged line (skipped and reported) instead of
+  failing every command; appends never glue onto a truncated line.
+- `run init --force` archives the previous run under `.archive/` instead of
+  rewriting state over old ledgers.
+- `run close` closes open required messages and marks active nodes done; graph
+  views report a closed topic as blocked; advancing from an end node explains
+  that the run should be closed.
+- Communication policy: the coordinator channel is always open; `lead` mode is
+  strict hub-and-spoke; hub adapters drop the open-by-default fallback.
+- `batch init` rejects an empty cases directory; `batch recover` marks cases
+  whose run completed as done and cancelled/failed runs as failed.
+- Card description defaults to 40-50 characters as WorkBuddy recommends.
+
+### Migration
+
+- Reinstall the Workbench and re-export/reinstall each team package. Old
+  packages keep working; `workbuddy doctor` lists them.
+- Bind pre-v0.4 runs with `run bind --native-team <team>` to sync and audit them.
+- `commandContract.run` in execution plans now reads `teamkit run init/status/close/audit/bind`.
+
+### Skills (team optimizer)
+
+The team review skill was repositioned as a platform-agnostic optimizer and renamed.
+
+#### Changed
 
 - `agent-team-reviewer` is renamed to `agent-team-optimizer` and rewritten in
   English at principle altitude: it now reviews and optimizes existing
@@ -22,7 +104,7 @@ optimizer and renames it.
   an existing team" requests to `agent-team-optimizer` (the skill was bundled
   but unreferenced before).
 
-### Added
+#### Added
 
 - `references/review-rubric.md`: universal five-cluster, 27-dimension rubric
   with a minimum viable scan, severity calibration, and cross-platform worked
@@ -36,10 +118,10 @@ optimizer and renames it.
   mechanical TeamKit review checks and version gate, loaded only for
   TeamKit v0.3 definitions as an evidence upgrade.
 
-### Builder revision (`agent-team-builder`)
+#### Builder revision (`agent-team-builder`)
 
-- Fixed the version-field treadmill: the definition guide now pins
-  `version: 0.3`, the team YAML spec example moved from `0.1` to `0.3`, the
+- Fixed the version-field treadmill: the definition guide pinned
+  `version: 0.3` (now `0.4`), the team YAML spec example moved from `0.1` to `0.3`, the
   example team follows, and the optimizer annex version gate is now
   feature-aware (parallel semantics present) instead of trusting the field
   value, which the validator never checks.
@@ -70,7 +152,7 @@ optimizer and renames it.
 - Corrected the annex claim that `result publish` refuses multi-node runs;
   since v0.3.2 it performs no run-state checks.
 
-### Migration
+#### Migration
 
 - Installed Workbench packages keep the old `agent-team-reviewer` skill until
   re-exported and reinstalled: rerun `workbuddy export-init` / `workbuddy
@@ -151,7 +233,6 @@ Not tagged or released on its own: these changes were committed together with
 
 This version adds design-time team review capabilities and aligns the
 surrounding documentation with the v0.3 collaboration semantics.
-
 
 ### Added
 
@@ -253,7 +334,7 @@ Initial release (as TeamKit Workbench).
 - Risk review example team and architecture, protocol and adapter docs.
 - One-command installer served through jsDelivr.
 
-[Unreleased]: https://github.com/Jaulous/agents-teamkit/compare/v0.3.4...HEAD
+[0.4.0]: https://github.com/Jaulous/agents-teamkit/compare/v0.3.4...v0.4.0
 [0.3.4]: https://github.com/Jaulous/agents-teamkit/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/Jaulous/agents-teamkit/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/Jaulous/agents-teamkit/compare/v0.3.0...v0.3.2
