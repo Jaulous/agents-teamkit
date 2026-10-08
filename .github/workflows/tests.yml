@@ -1,0 +1,31 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unittest:
+    name: Python ${{ matrix.python }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      # No PyYAML on purpose: the vendored copy must keep TeamKit working.
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+      - name: Smoke-test the CLI
+        run: |
+          python bin/teamkit --version
+          python bin/teamkit team validate --team examples/risk-review-team/team.yaml
