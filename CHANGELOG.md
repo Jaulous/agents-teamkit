@@ -1,6 +1,8 @@
 # Changelog
 
-All notable changes to Agents TeamKit are documented here.
+All notable changes to Agents TeamKit are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
+[Semantic Versioning](https://semver.org/) (pre-1.0: a minor bump may break).
 
 ## [Unreleased]
 
@@ -144,8 +146,12 @@ Core graph and parallel semantics are unchanged.
 
 ## [0.3.1] - 2026-09-01
 
-This release adds design-time team review capabilities and aligns the
+Not tagged or released on its own: these changes were committed together with
+0.3.2 and first shipped in the v0.3.2 release.
+
+This version adds design-time team review capabilities and aligns the
 surrounding documentation with the v0.3 collaboration semantics.
+
 
 ### Added
 
@@ -205,6 +211,55 @@ the v0.3 protocol and performance evolution.
 - Relative input resolution has a new precedence: run workspace, team root,
   then current directory.
 
-## [0.1.3]
+## [0.1.3] - 2026-08-04
 
-- Baseline TeamKit release before the v0.2/v0.3 iteration work.
+### Changed
+
+- The one-command installer no longer creates a persistent `~/.teamkit`
+  directory; it builds in a temporary directory and installs the Python runtime
+  inside the WorkBuddy plugin at `.agents-teamkit-runtime/venv`.
+- Generated WorkBuddy wrappers use the package-local runtime, so deleting the
+  plugin removes the runtime too.
+
+## [0.1.2] - 2026-08-04
+
+### Changed
+
+- Shortened the workbench's Chinese display description so the generated
+  package validates without warnings.
+- Install URLs point at `v0.1.2`.
+
+## [0.1.1] - 2026-08-04
+
+### Changed (Breaking)
+
+- Rebranded from Agent TeamKit / `workbuddy-agent-team-kit` to Agents TeamKit:
+  the Python distribution is `agents-teamkit`, the installer is
+  `scripts/install-workbuddy.sh`, and the WorkBuddy entry package is
+  `agents-teamkit-workbench`. `teamkit` remains the command name.
+
+## [0.1.0] - 2026-08-04
+
+Initial release (as TeamKit Workbench).
+
+### Added
+
+- `team.yaml` team model with experts, graph process, managed Context Items,
+  human review conditions and output definition, plus a JSON schema.
+- `teamkit` command layer for validation, compilation, run workspaces, Topic and
+  graph navigation, messages, artifacts, human input and final results.
+- WorkBuddy package export and install, including the TeamKit 工作台 package.
+- `agent-team-builder` and `agent-prompt-optimizer` skills.
+- Risk review example team and architecture, protocol and adapter docs.
+- One-command installer served through jsDelivr.
+
+[Unreleased]: https://github.com/Jaulous/agents-teamkit/compare/v0.3.4...HEAD
+[0.3.4]: https://github.com/Jaulous/agents-teamkit/compare/v0.3.3...v0.3.4
+[0.3.3]: https://github.com/Jaulous/agents-teamkit/compare/v0.3.2...v0.3.3
+[0.3.2]: https://github.com/Jaulous/agents-teamkit/compare/v0.3.0...v0.3.2
+[0.3.1]: https://github.com/Jaulous/agents-teamkit/compare/v0.3.0...v0.3.2
+[0.3.0]: https://github.com/Jaulous/agents-teamkit/compare/v0.1.3...v0.3.0
+[0.1.3]: https://github.com/Jaulous/agents-teamkit/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/Jaulous/agents-teamkit/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/Jaulous/agents-teamkit/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/Jaulous/agents-teamkit/releases/tag/v0.1.0
