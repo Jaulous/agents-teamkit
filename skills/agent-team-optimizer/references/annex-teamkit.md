@@ -177,3 +177,25 @@ The `after` above demonstrates notation only; it does not authorize copying node
 - `current_node` remains the first active node for old readers; parallel state lives in `active_nodes`/`activeNodes`.
 - Graph edges are the default step-to-step permission; do not copy every edge into communication rules.
 - This annex states mechanical semantics only; "is parallelism worth it here" returns to the expert profiles and business dependencies, as `[question]`.
+
+## Run Evidence (v0.4)
+
+When a TeamKit team has real runs, prefer recorded evidence over reading the
+definition alone. `teamkit run audit --run <id>` reports, per run:
+
+- `violation:unauthorized_route` — members talked outside declared routes. Either
+  the route is needed (propose a `communication.rules` entry) or the work split is
+  wrong (propose moving the exchange through the coordinator).
+- `violation:subagent_dispatch` — the lead called members as one-shot subagents;
+  usually a stale package, so propose re-export before any structural change.
+- `violation:duplicate_member` — members re-spawned while healthy; often the lead
+  lost track of members in long multi-wave runs. Consider smaller runs (one run per case).
+- `member_results` FAIL — a member-owned node advanced without the member's own
+  message: the coordinator is doing specialist work.
+- `graph_followed` / `graph_progress` warnings — the graph does not match how the
+  team actually works; propose node or edge changes that mirror observed practice.
+- `forced_advances` — recurring forces on one node point to a reply that never
+  arrives in the expected form; adjust that node's dispatch or response mode.
+
+Cite these findings as evidence in the change plan; they describe what
+happened, not what the definition intended. Consent tiers are unchanged.

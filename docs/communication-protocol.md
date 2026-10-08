@@ -15,20 +15,16 @@ It is platform independent. Host-platform-specific mapping belongs in the Adapte
 
 ## Implementation Principle
 
-Experts do not directly write message ledger files. The sender agent uses the host
-platform's native member-messaging tool for physical delivery.
+Messages enter the run ledger through one of two transports. Both produce the
+same logical envelope.
 
-They use TeamKit commands:
+| Transport | Used when | How a message is recorded |
+|---|---|---|
+| **Native, observed** (default on WorkBuddy) | the host has a member-messaging tool | agents call the host tool (`Agent`, `SendMessage`); the adapter's sync reads the host's own records and appends them with `source: workbuddy.native` |
+| **Command-mediated** | the host has no native channel, or a script drives the run | `teamkit msg send/reply/close` appends the ledger directly (`source: teamkit`) |
 
-```sh
-teamkit msg send ...
-teamkit msg reply ...
-teamkit msg close ...
-teamkit msg list ...
-```
-
-The command layer creates logical messages and appends the run ledgers. It does not
-map commands to platform APIs or write platform inboxes.
+Agents never write ledger files, and on hosts with a native channel they never
+record the same message twice.
 
 ## Core Concepts
 
@@ -112,40 +108,52 @@ updatedAt: "2026-08-02T00:00:00Z"
 
 ## Status
 
-First-version logical state machine:
-
 ```text
-created -> sent -> replied
-    |        |        |
-    v        v        v
- closed   failed   closed
+sent -> replied        (a correlated reply arrived)
+sent -> closed         (closed with a resolution, or the run was closed)
 ```
 
-The current implementation produces `sent` when the logical message is recorded,
-then `replied` or `closed`. It does not produce `failed`.
+- `sent`: recorded in the ledger. For native messages this also means the host
+  delivered it (TeamKit read it from the recipient's inbox or the lead transcript).
+- `replied`: a reply was correlated (`resolution: reply` or `reply_correlated`).
+- `closed`: closed by `msg close` with a resolution and reason, or by `run close`
+  (`resolution: run_closed`).
 
-### Status Meanings
-
-- `created`: message was created in the logical ledger.
-- `sent`: message was recorded in the run ledger. Recording is not physical delivery.
-- `replied`: message has a linked reply.
-- `closed`: message was explicitly closed without requiring further action.
-- `failed`: reserved for a future implementation; it is not produced by the current version.
-
-Host platforms may use different native states, but the current TeamKit version does
-not mirror those states into the logical ledger.
-
-Do not model complex delivery queues, handling attempts, or active-turn reply injection in the first version unless a target runtime makes them essentially free.
+`created` and `failed` remain reserved and are not produced.
 
 ## Reply Rules
 
-- A `reply` must include `replyTo`.
-- A `required` message is unresolved until one of these happens:
-  - a reply is attached
-  - recipient or authorized owner closes it with a reason
-- A reply should summarize the answer and reference artifacts or evidence.
+- A `reply` carries `replyTo`.
+- A `required` message stays open until a reply is correlated or someone closes
+  it with a reason; open required messages block only the graph node they name.
+- Correlation, in order of precedence:
+  1. `msg reply --reply-to <id>`;
+  2. an explicit `re=<msg-id>` in the `[TeamKit ...]` header of a native message;
+  3. the recipient sending anything back to the requester (same node when both
+     name one) closes the requester's oldest open required message to it.
+- Messages typed `question` or `escalation` (or a native header with
+  `type=question`) never close a request, so a clarifying question cannot
+  unblock the graph early.
+- A coordinator who knows a result arrived outside the ledger can run
+  `graph advance --force --reason "<why>"`; the override is audited.
 
-Agents must use `teamkit msg reply`; they should not start a new root message for an answer that belongs to an existing request.
+### Correlation header
+
+Native messages carry their run and node in the first line:
+
+```text
+[TeamKit run=<run-id> node=<node-id>]
+[TeamKit run=<run-id> node=<node-id> type=question]
+[TeamKit run=<run-id> node=<node-id> re=<msg-id>]
+```
+
+The header is how sync attributes a message to a run when several runs share
+one native team (one run per case). Messages without a header are attributed
+by time window only when exactly one run of that native team was open at the
+time; otherwise they are counted as `unattributed` and reported by the audit.
+
+A native dispatch is `required` only when its header names a node, because only
+then is it precise enough to gate that node.
 
 ## Artifact And Evidence References
 
@@ -158,17 +166,20 @@ Use:
 
 ## Collaboration Modes
 
-### manual
+The coordinator channel (coordinator <-> any member) is always open: hub
+platforms require dispatch and report-back. Beyond that:
 
-通信许可来自显式 `communication.rules` 与 lead↔member 内建通道；图边本身不自动授予成员间通信。`allow_expert_requests` 仍可显式开启成员请求。
+| `communication.mode` | Additional allowed routes |
+|---|---|
+| `lead` | only explicit `communication.rules` (strict hub-and-spoke) |
+| `manual` | only explicit `communication.rules` |
+| `hybrid` (default) | explicit rules plus graph-adjacent experts; a team that declares no rules and keeps `allow_expert_requests: true` is fully open (v0.3 behavior) |
 
-### hybrid
-
-沿用 v0.1 兼容逻辑：图边、显式 rules 和 `allow_expert_requests` 共同决定通信许可。
-
-### lead
-
-成员间通信沿用图边/rules 判定；成员可向 lead 发起请求。该字段描述协议能力，不规定调度时序。
+Hub platforms such as WorkBuddy evaluate routes **without** the open default,
+because the platform's own expert-team rules require all cross-member traffic
+to go through the lead unless a route is declared. Generated prompts list the
+allowed peer routes, and native sync records a `protocol.violation`
+(`unauthorized_route`) for every member-to-member message outside them.
 
 ## Business User Visibility
 
@@ -183,25 +194,9 @@ Show messages in business language:
 
 Hide native platform IDs unless debugging.
 
-## Physical Delivery Boundary
-
-`teamkit msg send`, `msg reply`, and `msg close` are ledger operations. A generated
-WorkBuddy agent physically delivers a message by calling the native `SendMessage`
-tool, including the subject, body, references, and TeamKit message ID so the
-recipient can correlate it with the ledger. `msg close` only closes the logical
-record; it does not notify a native inbox. Agents can observe the protocol state
-with `msg list` and `run status`.
-
 ## Adapter Boundary
 
-The current package-level adapter does not implement a command-to-messaging API
-mapping or a bidirectional native-message mirror. Each platform integration may
-provide its own generated-agent guidance and native tool usage while TeamKit keeps
-the logical protocol stable.
-
-```text
-TeamKit-created LogicalMessage -> run ledger
-sender agent -> host-platform native member-messaging tool
-```
-
-The logical protocol remains stable even if a host platform's native protocol changes.
+Adapters map the logical protocol onto host tools and observe the host's own
+records; they never write host inboxes or impersonate agents. For WorkBuddy see
+[workbuddy-adapter.md](workbuddy-adapter.md); for writing a new adapter see
+[adapter-development.md](adapter-development.md).

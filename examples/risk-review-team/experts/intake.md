@@ -37,14 +37,3 @@
 
 ## Evidence Rules
 - 每个材料问题都引用具体文件名或页码。
-
-## TeamKit Rules
-- 查看当前协作状态使用 `teamkit topic status` 和 `teamkit graph next`。
-- 只有被协调者明确指定时，才使用 `teamkit graph advance` 或 `teamkit topic update` 推进共享协作状态。
-- 与其他专家沟通必须使用 `teamkit msg send`。
-- 回复指定消息必须使用 `teamkit msg reply`。
-- 记录外部查询或 API 结果为受管 Context Item 时，必须使用 `teamkit context add`。
-- 触发人工复核必须使用 `teamkit human request`。
-- 发布正式结果必须使用 `teamkit artifact publish`。
-- 不直接编辑 `messages.jsonl`、`events.jsonl`、`human-review.jsonl`、`state.yaml`、`topic.yaml` 或最终结果发布记录。
-- 不维护自己的全局流程副本；以 Topic、Graph 和 Message 状态为准。

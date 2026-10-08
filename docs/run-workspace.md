@@ -62,8 +62,10 @@ Per-expert working area. Experts own their own `scratch.md` and `result.md`; oth
 
 ### `messages.jsonl`
 
-Logical TeamKit message ledger. It is written by `teamkit msg` commands and is
-not a mirror of native host-platform messages.
+Logical TeamKit message ledger. It is written by `teamkit msg` commands and,
+for runs bound to a host such as WorkBuddy, by native sync (records carry
+`source: workbuddy.native` and a `native` object). `native-sync.json` beside it
+stores the sync cursor and seen keys.
 
 Each line should include:
 

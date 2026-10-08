@@ -11,7 +11,7 @@ Use this skill to convert business intent into a compact, editable agent team de
 
 Keep the business user in control. Do not auto-invent a final team without giving the user chances to choose, rename, remove, or adjust experts and flow. The user ratifies everything: every expert, step, and Context Item traces to something they said or to an assumption you marked and they saw.
 
-Write `version: 0.3` — the current protocol. Parallel edges require it.
+Write `version: 0.4` — the current protocol (0.3 definitions remain valid). Parallel edges require 0.3 or later.
 
 Consent in this skill follows one line: consent to existence is a single review of the whole draft; consent to loss (changing an existing team) is the exact change shown. Creation needs the former; updates additionally need the latter.
 
@@ -40,7 +40,7 @@ Ask which experts the user already wants; preserve their names and intent. If un
 
 Read [team-definition-guide.md](references/team-definition-guide.md) and follow its Expert Profile Template. For each expert define: identity, responsible scope, not-responsible scope, visible context needs, outputs, when to ask another expert, when to ask the user.
 
-Include the runtime rules from `docs/expert-runtime-rules.md` or summarize them in a `TeamKit Rules` section — the guide's template is current with the command surface (message delivery, run closure, final-result archiving). Only the coordinator or an explicitly assigned expert should advance the graph or update shared Topic state.
+Keep profiles to business content. Do not write a `TeamKit Rules` section or command lists: platform adapters inject the collaboration protocol at export time (see the guide's "Protocol Rules Are Injected" note). Name the coordinator in `process.coordinator`; on WorkBuddy that expert becomes the team lead, and the lead's generated prompt embeds the coordinator profile, so put the coordinator's real orchestration duties there. Give every expert a one-line `role` in `team.yaml`; it becomes the responsibility column of the lead's roster.
 
 ### 4. Define Context Items
 

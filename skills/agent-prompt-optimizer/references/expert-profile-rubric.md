@@ -76,17 +76,16 @@ Weak:
 
 - allows unsupported final claims
 
-## TeamKit Rules
+## Protocol Boundary
 
 Good:
 
-- requires command-mediated messaging and artifact publication
-- requires command-mediated Context Item, artifact, specialized data snapshot, and human input requests when those actions occur
-- uses Topic and Graph as shared coordination state instead of embedding the whole flow in every expert profile
-- forbids direct edits to ledgers and canonical shared files
+- keeps the profile free of protocol commands; collaboration is described as business routes (who, when, what to hand over)
+- relies on the adapter-injected protocol for messaging, artifacts, human input, and ledger rules
 - permits private scratch work in the expert's own workspace
 
 Weak:
 
-- tells the expert to "update the shared files" without naming commands
-- lets the expert append to `messages.jsonl` manually
+- carries a `TeamKit Rules` section or copies command lists into the profile (adapters strip it and it drifts from the platform)
+- embeds the whole global process instead of the expert's own responsibilities
+

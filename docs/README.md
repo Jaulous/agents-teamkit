@@ -13,7 +13,7 @@ This directory is organized by the questions a new contributor or adapter author
 
 - [Team YAML spec](team-yaml-spec.md): the `team.yaml` protocol.
 - [Context Items](context-items.md): managed files, runtime snapshots, and visibility.
-- [Expert runtime rules](expert-runtime-rules.md): how generated experts should coordinate during a run.
+- [Expert runtime rules](expert-runtime-rules.md): the protocol adapters inject into generated agents.
 
 ## Run And Coordinate
 
@@ -25,9 +25,10 @@ This directory is organized by the questions a new contributor or adapter author
 
 ## Adapter Work
 
-- [WorkBuddy adapter](workbuddy-adapter.md): current package-level WorkBuddy export and install flow.
+- [WorkBuddy adapter](workbuddy-adapter.md): generated teams, native sync, audit, install and troubleshooting.
+- [WorkBuddy platform facts](workbuddy-bridge.md): verified host behavior the adapter relies on, and observed production failure modes.
+- [Adapter development](adapter-development.md): how to add another host platform.
 - [Directory model](directory-model.md): tool home, team roots, and run data placement.
-- [WorkBuddy bridge](workbuddy-bridge.md): delivery guidance and package-level bridge boundaries.
 - [MVP capability map](mvp-capability-map.md): implemented, deferred, and explicitly excluded capabilities.
 
 ## Public Project Notes

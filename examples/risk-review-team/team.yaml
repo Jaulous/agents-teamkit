@@ -1,4 +1,4 @@
-version: 0.3
+version: 0.4
 
 team:
   id: risk-review
@@ -8,26 +8,31 @@ team:
 experts:
   - id: intake
     name: 材料初审专家
+    role: 整理用户提交材料、检查缺失项并形成材料摘要
     profile: experts/intake.md
     references:
       - references/review-sop.md
 
   - id: evidence
     name: 证据核验专家
+    role: 核验业务系统数据与提交材料是否一致
     profile: experts/evidence.md
 
   - id: policy
     name: 风控规则专家
+    role: 判断适用的风控规则并指出规则冲突
     profile: experts/policy.md
     references:
       - references/risk-rules.md
 
   - id: decision
     name: 审核结论专家
+    role: 协调团队并汇总材料、证据和规则判断形成审核结论
     profile: experts/decision.md
 
   - id: qa
     name: 结论复核专家
+    role: 复核结论的证据支撑并判断是否需要人工复核
     profile: experts/qa.md
     references:
       - references/review-sop.md

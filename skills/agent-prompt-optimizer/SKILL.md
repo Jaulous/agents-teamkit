@@ -64,7 +64,6 @@ Keep the markdown structure stable:
 - Human Input Triggers
 - Evidence Rules
 - Style Constraints
-- TeamKit Rules
 
 For Collaboration Rules, prefer concrete message triggers:
 
@@ -74,19 +73,13 @@ For Collaboration Rules, prefer concrete message triggers:
 
 Use concrete business language. Avoid generic agent boilerplate.
 
-Ensure TeamKit Rules say:
-
-- inspect shared coordination state through `teamkit topic status` and `teamkit graph next`
-- inspect visible managed context through `teamkit context list`
-- add managed context through `teamkit context add` only when authorized
-- advance the graph or update shared Topic state only when the expert is the coordinator or explicitly assigned
-- send messages through `teamkit msg send`
-- reply through `teamkit msg reply`
-- record external Skill/API output through `teamkit context add` only when it should become managed context for the run
-- request human input through `teamkit human request`
-- publish artifacts through `teamkit artifact publish`
-- do not directly edit ledgers or canonical final result records
-- do not embed the whole global process into every expert profile
+Do not add or restore a `TeamKit Rules` section or command lists. Platform
+adapters inject the collaboration protocol on export and strip legacy protocol
+sections. If a run audit (`teamkit run audit`) shows protocol problems — for
+example members messaging each other outside allowed routes, or a lead writing
+results itself — fix the team definition (routes in `process.communication`,
+node ownership in `process.graph`) or report it as an adapter issue, rather
+than adding protocol prose to a profile.
 
 ### 4. Explain The Changes
 

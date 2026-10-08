@@ -1,253 +1,216 @@
 # WorkBuddy Adapter
 
-The first WorkBuddy Adapter is a package-level adapter.
+The WorkBuddy adapter turns a TeamKit team into a WorkBuddy **expert team**
+(专家团) and keeps the run ledger in step with what the team actually does.
 
-It does not replace WorkBuddy native messaging. It packages two things:
+It ships two kinds of packages:
 
-- `Agents TeamKit 工作台`: the WorkBuddy Skill carrier for creating, managing, validating, exporting, and improving user-owned teams.
-- Generated Team packages: WorkBuddy Team expert packages compiled from a TeamKit `team.yaml`.
+- **Agents TeamKit 工作台** (Workbench): the entry package for designing,
+  validating, exporting, installing and auditing user-owned teams.
+- **Generated team packages**: one per `team.yaml`.
 
-Both use bundled TeamKit command wrappers to keep Graph, Topic, Context Items, Message, human input, artifacts, and final result state deterministic.
-
-## One-Command Install
-
-For end users who only want to install `Agents TeamKit 工作台` into their own WorkBuddy:
-
-```sh
-/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.3.4/scripts/install-workbuddy.sh)"
-```
-
-The installer downloads this repository, uses a temporary Python runtime for installation, exports `Agents TeamKit 工作台`, installs a package-local runtime under the WorkBuddy plugin directory, and registers the package in WorkBuddy's user expert marketplace. `TEAMKIT_HOME` is the tool-owned directory, separate from team definitions and run data; generated wrappers inject a per-team `TEAMKIT_RUNS_DIR`.
-
-Advanced options:
-
-```sh
-TEAMKIT_REF=main /bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@main/scripts/install-workbuddy.sh)"
-TEAMKIT_WORKBUDDY_CONFIG_DIR=/path/to/.workbuddy /bin/bash scripts/install-workbuddy.sh
-TEAMKIT_SOURCE_DIR=/path/to/agents-teamkit /bin/bash scripts/install-workbuddy.sh
-```
-
-## Update An Existing Installation
-
-The one-command installer is also the upgrade command. It exports the latest
-Workbench package, then installs it with `--force`, replacing the existing
-`agents-teamkit-workbench` package and refreshing its marketplace registration:
-
-```sh
-/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.3.4/scripts/install-workbuddy.sh)"
-```
-
-The installer uses a temporary download and Python environment; it does not
-modify the TeamKit repository or require a separate uninstall step. If WorkBuddy
-does not show the new package immediately, restart WorkBuddy and reopen the
-expert center.
-
-To update a generated Team expert package, re-export it from the current
-`team.yaml` and reinstall the generated package with the same package name:
-
-```sh
-bin/teamkit workbuddy export \
-  --team /path/to/my-team/team.yaml \
-  --out /path/to/my-team/build/workbuddy \
-  --force
-bin/teamkit workbuddy install \
-  --package /path/to/my-team/build/workbuddy/my-team \
-  --force
-```
-
-`--force` replaces only the installed plugin files and marketplace entry. In
-v0.3, normal WorkBuddy run data lives under
-`~/.workbuddy/teamkit-runs/<team-id>/`, so it is not removed when updating the
-package. For installations created before v0.3, back up any data under
-`teamkit-workspace/runs/` before upgrading: the installer prints a warning and
-replaces that legacy package directory.
-
-## Local Detection
-
-```sh
-bin/teamkit workbuddy detect --json
-```
-
-This reports:
-
-- WorkBuddy app path
-- app version
-- registered deep link schemes
-- bundled `codebuddy` CLI path
-- user expert marketplace path
-
-On this machine, WorkBuddy was detected at `/Applications/WorkBuddy.app` with `workbuddy://` deep links and the bundled `codebuddy` CLI.
-
-## Export Agents TeamKit 工作台
-
-```sh
-bin/teamkit workbuddy export-init \
-  --out build/workbuddy \
-  --force
-```
-
-This creates the WorkBuddy entry package:
+## How A Generated Team Works
 
 ```text
-build/workbuddy/agents-teamkit-workbench/
+user prompt
+  -> lead agent (the team's coordinator)      run init --run <id>
+  -> TeamCreate(team_name=<package>)
+  -> Agent(name=subagent_type=<Agent ID>, team_name=...)   first dispatch of a member
+  -> SendMessage(recipient=<Agent ID>)                       later dispatches
+  <- SendMessage(recipient=team-lead)                        member report-back
+  -> graph advance --run <id> [--to <node>]                  at each node boundary
+  -> result publish / run close                              at the end
+```
+
+Every dispatch and report starts with `[TeamKit run=<run-id> node=<node-id>]`.
+TeamKit reads WorkBuddy's own records on every `run status`, `graph next`,
+`graph advance`, `msg list`, `run audit` and `run close`, so the ledger contains
+the real collaboration without any agent calling `msg send`.
+
+### What the generated prompts contain
+
+The lead (`<package>-team-lead`) prompt follows WorkBuddy's official expert-team
+specification and adds:
+
+- the coordinator's own profile (its business duties);
+- a member roster with Agent IDs and one-line responsibilities (`experts[].role`);
+- an SOP compiled from `process.graph`: one step per node, who executes it, and
+  the exact `graph advance` command for every outgoing edge, including branch
+  conditions, `max_visits` limits, parallel forks and joins;
+- the run protocol (eight steps) and the red lines (no ghost-writing, no
+  duplicate spawns, no subagent shortcuts, run close before team cleanup);
+- allowed member-to-member routes, human-input conditions and the final deliverable.
+
+Each member prompt contains its own profile, the Context Items visible to it,
+the report-back contract, its allowed peers, and what it must not do.
+
+Profiles keep business content only; legacy `## TeamKit Rules` sections are
+stripped on export because the adapter injects the protocol.
+
+### Identity mapping (roster)
+
+`teamkit-workspace/roster.json` is the single source of truth:
+
+| TeamKit expert | WorkBuddy Agent ID | Native member name |
+|---|---|---|
+| coordinator (`process.coordinator`) | `<package>-team-lead` | `team-lead` |
+| any other expert `x` | `<package>-x` | `<package>-x` (spawn name = Agent ID) |
+
+Sync resolves members by their `agentType`, so a run stays readable even if a
+lead spawned members under other names (it is flagged as
+`noncanonical_member_name`).
+
+## Native Sync
+
+Sources, all read-only:
+
+| Source | Location | Provides |
+|---|---|---|
+| team config | `~/.workbuddy/teams/<team>/config.json` | lead session, members, spawn prompts (dispatches) |
+| member inboxes | `~/.workbuddy/teams/<team>/inboxes/<member>.json` | messages delivered to members |
+| lead transcript | `~/.workbuddy/projects/<cwd>/<lead-session>.jsonl` | messages delivered to the lead (WorkBuddy prunes the lead inbox), platform notifications, and `Agent` calls made without `team_name` |
+| task list | `~/.workbuddy/tasks/<team>/*.json` | task status transitions |
+
+**Binding.** `run init` records the host session (`CODEBUDDY_SESSION_ID`) and
+working directory. Sync binds the run to the native team whose
+`leadSessionId` matches, falling back to the same working directory and package
+within a 15-minute window. `run bind --native-team <name>` or `run init
+--native-team <name>` set it explicitly.
+
+**Recorded events.** `member.spawned`, `member.completed`, `member.failed`,
+`member.reactivated`, `member.respawned`, `native.task`, and
+`protocol.violation` with one of:
+
+| Violation | Meaning | Audit |
+|---|---|---|
+| `unauthorized_route` | a member messaged another member outside the allowed routes | FAIL |
+| `subagent_dispatch` | the lead called a member with `Agent` but without `name`/`team_name`; it ran as a one-shot subagent that cannot receive follow-ups or use `SendMessage` | FAIL |
+| `unknown_member` | a member was spawned with a `subagent_type` that is not one of this team's agents | FAIL |
+| `duplicate_member` | an agent was spawned again while an earlier copy was healthy (respawning after a failure is not a violation) | WARN |
+| `noncanonical_member_name` | spawn name differs from the Agent ID | WARN |
+
+Run `teamkit workbuddy sync --run <id>` to sync on demand and
+`teamkit workbuddy teams` to list native teams.
+
+## Audit
+
+```sh
+<launcher> run audit --run <run-id>          # inside WorkBuddy
+bin/teamkit --team <installed>/teamkit-workspace/team.yaml run audit --run <run-id>
+```
+
+Checks: ledger integrity, host binding, attribution, violations, member results
+behind every member-owned node that advanced, results that ran ahead of the
+graph, open required messages, forced advances, graph progress, open human input,
+final result. Verdicts: `PASS`, `PASS_WITH_WARNINGS`, `FAIL`, `UNVERIFIED`.
+
+## Install
+
+### One command (Workbench)
+
+```sh
+/bin/bash -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/Jaulous/agents-teamkit@v0.4.0/scripts/install-workbuddy.sh)"
+```
+
+The installer needs only Python 3.9+ (it prefers the Python bundled with
+WorkBuddy) and no `pip`: TeamKit's single dependency, PyYAML, is vendored as
+pure Python. Rerun the same command to upgrade.
+
+### From a checkout
+
+```sh
+bin/teamkit workbuddy doctor
+bin/teamkit workbuddy export-init --out build/workbuddy --force
+bin/teamkit workbuddy install --package build/workbuddy/agents-teamkit-workbench --force
+
+bin/teamkit workbuddy export --team examples/risk-review-team/team.yaml --out build/workbuddy --force
+bin/teamkit workbuddy install --package build/workbuddy/risk-review --force
+```
+
+Install is transactional: the package is copied to a staging directory inside
+the experts folder, checked by TeamKit's closure validation and by WorkBuddy's
+official `validate_expert.py`, rendered (the `{{TEAMKIT_SCRIPT}}` placeholder
+becomes the installed launcher path), and atomically swapped in. The previous
+version moves to `~/.workbuddy/teamkit-backups/`. Without the official
+validator (non-default install location, other OS) installation continues with
+a warning; `--strict` makes it mandatory.
+
+`workbuddy uninstall --package <name>` also moves the package to
+`teamkit-backups/` and removes its marketplace entry. Run data in
+`~/.workbuddy/teamkit-runs/<team-id>/` is never touched by install or uninstall.
+
+Restart WorkBuddy or reopen the expert center if a package does not appear.
+
+### Generated package layout
+
+```text
+<package>/
   .codebuddy-plugin/plugin.json
-  agents/
-  skills/agent-team-optimizer/
-  skills/agent-team-builder/
-  skills/agent-prompt-optimizer/
-  skills/agents-teamkit-workbench-runtime/
-  docs/
-  schemas/
-  vendor/teamkit/
+  settings.json                      {"agent": "<package>-team-lead"}
+  agents/<package>-team-lead.md, agents/<package>-<expert>.md
+  skills/teamkit-runtime/SKILL.md
+  skills/teamkit-runtime/scripts/teamkit      POSIX launcher
+  skills/<declared skills>/
+  teamkit-workspace/team.yaml, roster.json, experts/, references/
+  vendor/teamkit/                    TeamKit package incl. vendored PyYAML
+  vendor/teamkit_entry.py, vendor/teamkit_entry.json
+  avatars/                           optional
 ```
 
-Install it with:
+The launcher picks `TEAMKIT_PYTHON`, then WorkBuddy's bundled Python, then
+`python3`/`python`, and sets `TEAMKIT_HOST=workbuddy`, the package name and
+`TEAMKIT_RUNS_DIR=~/.workbuddy/teamkit-runs/<team-id>`.
 
-```sh
-bin/teamkit workbuddy install \
-  --package build/workbuddy/agents-teamkit-workbench \
-  --force
-```
+## `workbuddy.yaml` (optional adapter manifest)
 
-In WorkBuddy, open `Agents TeamKit 工作台` and start with:
-
-```text
-帮我创建一个新的多 Agent 团队。
-```
-
-## Export A Team
-
-```sh
-bin/teamkit workbuddy export \
-  --team examples/risk-review-team/team.yaml \
-  --out build/workbuddy \
-  --force
-```
-
-TeamKit Core stays platform-neutral.  WorkBuddy-only capabilities are declared
-next to `team.yaml` in an optional `workbuddy.yaml`; they are not added to the
-Core team definition:
+Kept beside `team.yaml`; Core never reads it.
 
 ```yaml
 skills:
-  - name: custom-skill
-    path: custom-skill
-    agents:
-      - evidence
+  - name: order-data
+    path: skills/order-data
+    agents: [field-verifier, logistics-auditor]   # omit = every agent
+display:
+  description_zh: "40-50 个汉字的卡片简介"
+  description_en: "Card description"
+  category: 11-SecurityCompliance            # WorkBuddy categoryId
+  tags:                                       # exactly 3
+    - {zh: 风控审核, en: Risk review}
+    - {zh: 多专家协作, en: Multi-agent}
+    - {zh: 可审计, en: Auditable}
+  quick_prompts:                              # exactly 3; the first is the default prompt
+    - {zh: "...", en: "..."}
+    - {zh: "...", en: "..."}
+    - {zh: "...", en: "..."}
 ```
 
-Each declared Skill must be a directory containing `SKILL.md`.  The adapter
-copies it into `skills/<name>/`, adds the Skill only to the selected generated
-agents, and checks the complete reference closure before publishing.  Agent
-frontmatter, `plugin.json`, and avatar references are checked together, so a
-missing Skill or asset fails the export instead of producing a package that
-loads partially.
+## Platform Constraints Respected
 
-This creates a WorkBuddy Team package:
+- Expert packages may not contain `hooks/` or `commands/` and agent frontmatter
+  may not declare `tools` (official validator). TeamKit therefore observes the
+  platform through its persisted records instead of hooks.
+- The lead file must be `<team>-team-lead.md`; Team `profession` equals
+  `displayName`; exactly three tags and three quick prompts.
+- One team per session; members cannot create teams; teams must be cleaned up
+  by the lead (TeamKit tells the lead to `run close` first so nothing is lost).
 
-```text
-build/workbuddy/risk-review/
-  .codebuddy-plugin/plugin.json
-  settings.json
-  agents/
-  skills/teamkit-runtime/
-  teamkit-workspace/
-  vendor/teamkit/
-```
+## Upgrading From v0.3
 
-The generated package contains:
+1. Reinstall the Workbench with the one-command installer.
+2. Re-export and reinstall each team package (`workbuddy export` + `workbuddy install --force`).
+   Old packages keep working but use the legacy `teamkit.py` wrapper that
+   creates a networked venv; `workbuddy doctor` lists them.
+3. Existing runs stay where they were (`~/.workbuddy/teamkit-runs/<team-id>/`).
+   Runs created before v0.4 have no host binding; bind one with
+   `run bind --run <id> --native-team <team>` to sync and audit it.
 
-- a WorkBuddy Team lead agent
-- one WorkBuddy member agent per TeamKit expert, except the configured coordinator becomes the lead
-- a `teamkit-runtime` skill
-- a wrapper script at `skills/teamkit-runtime/scripts/teamkit.py`
-- a copy of the TeamKit team workspace
-- a vendored TeamKit CLI
+## Troubleshooting
 
-## Install Locally
-
-```sh
-bin/teamkit workbuddy install \
-  --package build/workbuddy/risk-review \
-  --force
-```
-
-This installs the package under:
-
-```text
-~/.workbuddy/plugins/marketplaces/my-experts/plugins/risk-review
-```
-
-It also registers the package in:
-
-```text
-~/.workbuddy/plugins/marketplaces/my-experts/.codebuddy-plugin/marketplace.json
-```
-
-After installation, restart WorkBuddy if the expert does not appear immediately in the expert center.
-
-Installation is transactional: TeamKit copies the source package to a staging
-directory under the WorkBuddy expert root, runs the TeamKit closure checks and
-WorkBuddy's bundled official validator, then atomically replaces the target
-package.  Existing installed files remain unchanged if any check fails.  The
-same staging-and-atomic publication rule is used by both `workbuddy export` and
-`workbuddy export-init`; `--force` never means "delete first".
-
-To remove an old or generated package:
-
-```sh
-bin/teamkit workbuddy uninstall \
-  --package old-package-name \
-  --force
-```
-
-## Validate With WorkBuddy
-
-Use WorkBuddy's bundled expert validator:
-
-```sh
-python3 /Applications/WorkBuddy.app/Contents/Resources/app.asar.unpacked/resources/builtin-skills/expert-manager/scripts/validate_expert.py \
-  ~/.workbuddy/plugins/marketplaces/my-experts/plugins/risk-review
-```
-
-## Try A Task Run
-
-In WorkBuddy, open the installed `风控审核团队` expert team and start with:
-
-```text
-请使用这个 Agent 团队处理一个任务，并先帮我初始化运行空间。run id 用 task-001。
-```
-
-The lead should use the bundled runtime skill and commands such as:
-
-```sh
-{{TEAMKIT_SCRIPT}} team validate
-{{TEAMKIT_SCRIPT}} run init --run task-001
-{{TEAMKIT_SCRIPT}} run status --run task-001
-{{TEAMKIT_SCRIPT}} context list --run task-001
-{{TEAMKIT_SCRIPT}} graph next --run task-001
-```
-
-## Current Adapter Boundary
-
-Implemented now:
-
-- WorkBuddy app detection
-- Agents TeamKit 工作台 export and installation
-- TeamKit team export to WorkBuddy Team package, including delivery guidance
-- local WorkBuddy expert installation and marketplace registration
-- bundled TeamKit command wrapper for deterministic run state
-
-The Builder and Optimizer Skills follow the same boundary.  Editing
-`team.yaml`, the graph, or TeamKit profiles is a Core operation; it does not
-implicitly re-export or reinstall a WorkBuddy package.  A WorkBuddy package is
-a separate publication target and must be explicitly requested and approved.
-The Workbench export currently carries only the TeamKit Builder, Team Optimizer,
-and Prompt Optimizer Skills; business-specific Skills remain outside this
-TeamKit scope.
-
-Not in scope for this iteration:
-
-- mapping `teamkit msg send` to WorkBuddy native messages (delivery is performed by the sender member with `SendMessage`; `msg` commands only record the ledger)
-- mirroring WorkBuddy native messages back into `messages.jsonl`
-- opening or starting WorkBuddy sessions through deep links
+| Symptom | Check |
+|---|---|
+| `run status` shows `sync.reason: no native team matched` | the lead has not called `TeamCreate` yet, or ran `run init` in another session; use `run bind --native-team` |
+| graph blocked by open messages that were answered | the reply lacked a header or went to another run; `run status` lists the ids; `graph advance --force --reason ...` |
+| audit `subagent_dispatch` | the lead omitted `name`/`team_name` on `Agent`; re-export the package (v0.4 prompts state it explicitly) |
+| audit `unauthorized_route` | members talked directly; add a `communication.rules` entry if the route is intended |
+| launcher `needs Python 3.9+` | set `TEAMKIT_PYTHON` or install Python 3 |
+| package missing after install | `workbuddy doctor`; restart WorkBuddy |

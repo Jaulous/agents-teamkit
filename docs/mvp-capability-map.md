@@ -65,22 +65,25 @@ This file keeps the first implementation honest: what is already implemented, wh
 - validation for communication route rejection
 - source-tree `bin/teamkit` entrypoint smoke test
 - WorkBuddy package export tests for both Agents TeamKit 工作台 and generated team packages
+- native-sync, audit, launcher and installer tests with synthetic WorkBuddy data; local replay of recorded production runs
+- the full suite runs on Python 3.9 and 3.13
 
-## Host-Native WorkBuddy Boundary
+## WorkBuddy Integration (v0.4)
 
-These are deterministic implementation facts, not open product design questions.
-The first item is implemented as generated-agent guidance; the remaining native
-integration items are intentionally not implemented:
+Implemented:
 
-- create/configure WorkBuddy-native agent teams through official APIs beyond package installation
-- map execution plans to WorkBuddy native task objects
-- send TeamKit logical messages through a WorkBuddy agent's native `SendMessage`
-  tool (generated-agent guidance; TeamKit itself remains ledger-only)
-- mirror WorkBuddy native messages/events back into the run workspace (not planned)
-- mirror or attach managed Context Items through WorkBuddy-native file/artifact mechanisms
-- record outputs from existing WorkBuddy Skills or internal API wrappers as Context Items or artifacts when a team wants them in the run record
-- attach published artifacts to WorkBuddy-native artifacts if supported
-- create native human input/approval tasks if supported
+- generated lead/member agents that follow WorkBuddy's official expert-team rules
+  and an SOP compiled from the graph
+- native sync of team config, member inboxes, the lead transcript and the task
+  list into the run ledgers, with reply correlation and protocol violations
+- run audit, environment doctor, dependency-free runtime packages
+
+Not implemented, by design:
+
+- writing WorkBuddy inboxes, tasks or sessions (TeamKit observes, never impersonates)
+- WorkBuddy hooks (expert packages may not ship them)
+- mapping execution plans to native task objects
+- attaching Context Items or artifacts to WorkBuddy-native file mechanisms
 
 ## Deferred Product Surface
 

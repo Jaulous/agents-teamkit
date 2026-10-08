@@ -1,130 +1,66 @@
-# WorkBuddy Bridge
+# WorkBuddy Platform Facts
 
-The WorkBuddy Bridge maps the kit's team definition into WorkBuddy-native capabilities.
+Verified facts the WorkBuddy adapter relies on. Re-check them when WorkBuddy
+releases a major version; `teamkit workbuddy doctor` reports the installed
+version. Last verified against WorkBuddy 5.3.5 (macOS, agent CLI bundled in the
+app) using the app's own documentation, its official expert validator, and
+recorded production runs.
 
-## Design Rule
+## Packaging
 
-Prefer WorkBuddy official mechanisms for agent teams, messaging, task lists, skills, and artifacts. The kit defines the business protocol; generated WorkBuddy agents use native tools for actions the core cannot perform.
+- User experts live in `$WORKBUDDY_CONFIG_DIR/plugins/marketplaces/my-experts/plugins/<name>`
+  (default config dir `~/.workbuddy`) and are registered in that marketplace's
+  `.codebuddy-plugin/marketplace.json`.
+- The official validator is
+  `WorkBuddy.app/Contents/Resources/app.asar.unpacked/resources/builtin-skills/expert-manager/scripts/validate_expert.py`.
+  It requires the package to sit inside the experts directory, forbids `hooks/`,
+  `commands/` and `.lsp.json`, forbids a `tools` field in agent frontmatter,
+  requires `agentName` = lead markdown file name (not the bare `team-lead`),
+  `settings.json` `agent` = `agentName`, Team `profession` = `displayName`,
+  exactly 3 tags and 3 quick prompts, and warns when
+  `displayDescription.zh` is not 40-50 characters.
+- When a session selects an expert, WorkBuddy enables the expert plugin for
+  that session (`/api/v1/plugins/switch`, `name@my-experts`) and turns on Agent
+  Teams for `expertType: team` (`CODEBUDDY_CODE_EXPERIMENTAL_AGENT_TEAMS`).
+- WorkBuddy ships a managed Python at
+  `~/.workbuddy/binaries/python/envs/default/bin/python3`.
 
-## Confirmed Local Facts
+## Agent Teams Runtime
 
-On the current macOS machine:
+- `TeamCreate` creates `teams/<team>/config.json`; if the name exists the
+  platform appends a suffix (`contract-order-audit` -> `contract-order-audit-56af`).
+  One team per session; the creating session is the lead, named `team-lead`.
+- `Agent` with `name` + `team_name` (+ `subagent_type`) spawns an in-process
+  teammate recorded in `config.json` `members[]` with `name`, `agentType`,
+  `prompt` and `joinedAt` (epoch ms). Reusing a name yields `<name>-2`.
+- `Agent` **without** `team_name` runs a one-shot subagent: it returns its result
+  to the caller, is not a team member, and cannot use `SendMessage` ("missing
+  teamContext").
+- `SendMessage` parameters: `type` (`message`, `broadcast`, `shutdown_request`,
+  `shutdown_response`, `plan_approval_response`), `recipient`, `content`,
+  `summary`, `request_id`, `approve`.
+- Every delivered message is appended to `teams/<team>/inboxes/<recipient>.json`
+  as `{from, text, summary, timestamp, color, read}`. The **lead inbox is
+  pruned**; messages to the lead are reliably present in the lead session
+  transcript as `<teammate-message teammate_id="..." summary="...">...</teammate-message>`
+  user messages.
+- Session transcripts: `~/.workbuddy/projects/<cwd with / replaced by ->/<session-id>.jsonl`
+  with rows of type `message`, `function_call` (`name`, `arguments`, `callId`),
+  and `function_call_result` (`callId`, `output`).
+- Platform notifications arrive as `from: system` messages:
+  `Teammate "x" completed successfully` / `failed` (with the error, for example
+  HTTP 429 rate limits) and `Teammate "x" has been reactivated`.
+- Completed members are reactivated automatically when they receive a message.
+- The Bash tool exports `CODEBUDDY_SESSION_ID` (the lead's id equals the team's
+  `leadSessionId`).
+- Hooks exist for user/project settings and normal plugins, but expert packages
+  may not ship them (see packaging), so TeamKit does not depend on hooks.
 
-- WorkBuddy desktop app exists at `/Applications/WorkBuddy.app`
-- bundle identifier is `com.workbuddy.workbuddy`
-- app version is `5.3.5`
-- deep link scheme includes `workbuddy://`
-- bundled CLI exists at `/Applications/WorkBuddy.app/Contents/Resources/app.asar.unpacked/cli/bin/codebuddy`
-- user expert packages are installed under `~/.workbuddy/plugins/marketplaces/my-experts/plugins`
+## Observed Failure Modes (production, Sept 2026)
 
-The first adapter therefore exports TeamKit teams into WorkBuddy Team expert packages and registers them in the local expert marketplace.
-
-## Responsibilities
-
-### Compile Experts
-
-Transform each expert into WorkBuddy-native configuration:
-
-- name
-- role/profile prompt
-- visible Context Item expectations
-- communication instructions
-
-### Compile Process
-
-Map `process.graph` to WorkBuddy tasks. Message commands remain logical ledger
-operations; generated agents use the native `SendMessage` tool for physical delivery.
-
-### Compile Context Visibility
-
-Expose declared Context Items to the generated team package and keep per-run Context Item snapshots available through TeamKit commands.
-
-If a user or agent adds a task-specific file during a run, the Adapter should call or preserve the effect of `teamkit context add` so agents read a managed copy rather than arbitrary user-machine paths.
-
-### Respect Tool Access Boundary
-
-TeamKit does not assign WorkBuddy Skills, MCPs, or API tools to agents. WorkBuddy and the user's agent configuration own what an agent can execute.
-
-If an existing WorkBuddy Skill or internal API wrapper produces information that should become part of a run, record it as a Context Item or publish it as an artifact. The business user should not see API schemas or tool registries.
-
-### Start Run
-
-Create a run workspace, pass the task brief and managed context references into WorkBuddy, and start execution according to the process mode.
-
-The platform-independent entry point is:
-
-```sh
-teamkit team compile --team team.yaml --out build/execution-plan.json
-teamkit run init --team team.yaml --run run-001
-```
-
-The package-level adapter consumes the execution plan and packages the team for
-WorkBuddy. It does not turn TeamKit message commands into platform API calls.
-
-### Ledger and Native Work
-
-TeamKit remains the source of truth for logical run records:
-
-- `messages.jsonl`
-- `events.jsonl`
-- `context-items.jsonl`
-- `artifacts/*`
-
-The sender agent uses WorkBuddy's native `SendMessage` tool for physical delivery,
-including the TeamKit message ID. TeamKit does not mirror native messages back into
-the logical ledger. If a native event is not visible to TeamKit, the agent can
-record a structured summary through the normal command or artifact flow.
-
-### Message Delivery Boundary
-
-TeamKit commands are the stable contract. They record protocol state only:
-
-- `teamkit msg send/reply/close` -> append the logical message/event ledgers
-- the sender member -> calls WorkBuddy `SendMessage` with the subject, body,
-  references, and TeamKit message ID
-- `teamkit context add`, `human request`, and `artifact publish` -> remain
-  TeamKit ledger/artifact operations; any native presentation is platform-owned
-
-## Message Delivery Envelope
-
-Internal logical message:
-
-```yaml
-from: intake
-to: policy
-subject: 判断适用规则
-intent: rule_check
-response: required
-runId: run-001
-topicId: run-001
-nodeId: evidence_check
-artifactRefs:
-  - artifacts/expert-results/fact-summary.md
-```
-
-The sender member passes the following information to WorkBuddy `SendMessage`:
-
-- subject and body
-- artifact/evidence references
-- TeamKit message ID, run ID, and recipient context when useful
-
-If the native tool does not preserve metadata fields, include a short structured
-header in the message body. This is an agent-level delivery convention, not a
-TeamKit-to-API mapping.
-
-## Platform Verification Boundary
-
-These are implementation facts, not product design choices. The package does not
-assume they are available until a live WorkBuddy check confirms them:
-
-- whether a WorkBuddy team session can deliver member-to-member messages with
-  `SendMessage` and wake the recipient session
-- whether native messages preserve arbitrary run/message identifiers
-- whether native messages carry attachments or artifact references
-- whether an extension can observe native message/task status
-- whether a page extension can read/write team definition files
-
-The v0.2 plan keeps member-to-member delivery as a manual hard gate until this is
-tested in a live WorkBuddy session; see `docs/plans/v0.2-iteration-plan.md:283`.
-
-Once confirmed, the bridge can be implemented directly against the actual WorkBuddy APIs.
+| Run | What happened | How v0.4 handles it |
+|---|---|---|
+| 10-order audit | 30 member-to-member messages outside declared routes; 14 members spawned under expert ids instead of Agent IDs; members re-spawned after 429 failures; 4 required ledger messages never correlated, graph stuck | native sync records every message, flags routes and names, treats respawn-after-failure as legitimate, correlates replies automatically |
+| 2-order audit | the lead created a team but called all 16 members as subagents; members could not report via `SendMessage`; the graph never advanced | `subagent_dispatch` violation, prompts require `name`/`team_name`, audit `graph_followed` warning |
+| 9 single-order runs | `run init` then `run close` with no messages: the ledger never saw the work | runs bind to the host session; audit reports `UNVERIFIED` instead of passing |
+| lead prompt | the coordinator's own profile was not included in the lead prompt | lead prompt embeds the coordinator profile |

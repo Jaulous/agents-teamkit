@@ -64,20 +64,20 @@ You are ...
 
 ## Evidence Rules
 - Cite managed Context Items, published artifacts, or human decisions.
-
-## TeamKit Rules
-- Send messages with `teamkit msg send`, then physically deliver them with the host platform's native member-communication tool, passing the TeamKit message ID.
-- Reply with `teamkit msg reply --reply-to <message-id>`.
-- Close required messages that need no substantive reply with `teamkit msg close` and a reason.
-- Inspect coordination state with `teamkit run status`; use `teamkit msg list` for full message context.
-- Inspect visible context with `teamkit context list`.
-- Add context with `teamkit context add` only when authorized.
-- Advance the graph with `teamkit graph advance` only when you are the coordinator or are explicitly assigned that responsibility.
-- Request and resolve human input with `teamkit human request` / `teamkit human resolve`.
-- Publish official outputs with `teamkit artifact publish`.
-- Archive the final result with `teamkit result publish`; close the run with `teamkit run close` when the business work is complete.
-- Do not directly edit `messages.jsonl`, `events.jsonl`, `context-items.jsonl`, `human-review.jsonl`, `state.yaml`, `topic.yaml`, artifact index files, or final-result archive records.
 ```
+
+### Protocol Rules Are Injected, Not Written
+
+Profiles hold business content only. Do not add a `TeamKit Rules` section or
+any `teamkit ...` command lists: each platform adapter injects the protocol
+that fits its host when it exports the team (for WorkBuddy: TeamCreate ->
+Agent spawn -> SendMessage report-back, Agent ID naming, the `[TeamKit run=...
+node=...]` header, and the four ledger commands the lead runs). Legacy
+`TeamKit Rules` sections are stripped automatically on export, so old profiles
+keep working, but new ones should not carry them.
+
+Describe collaboration in business terms instead: who to ask, when, and what
+to hand over. The adapter turns those routes into platform instructions.
 
 ## Context Item Wording
 

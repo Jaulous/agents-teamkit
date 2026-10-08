@@ -2,159 +2,125 @@
 
 ## Goal
 
-Build a lightweight, platform-independent TeamKit that lets non-technical business users assemble and run multi-agent teams for repeatable business work, such as risk review, compliance checking, contract review, or customer operations.
+Let business users assemble and run repeatable multi-agent teams (risk review,
+compliance checks, contract review, customer operations) on the agent platform
+they already use, with a team definition they can read and a run record they
+can audit.
 
-WorkBuddy is the first Adapter and packaging target. It must not define the user model or the TeamKit Core coordination model.
+TeamKit Core is platform-independent. WorkBuddy is the first adapter; it must
+not define the user model or the Core coordination model.
 
-The system should be easy for business users while staying technically extensible underneath.
+## The Central Design Decision (v0.4)
 
-## Design References
+Hosts such as WorkBuddy already have a native collaboration channel: the lead
+creates a team, spawns members, and members exchange messages with
+`SendMessage`. Up to v0.3 TeamKit asked every agent to *also* record each
+message through `teamkit msg send`. In production that second channel drifted
+from reality: agents skipped it, replied with new root messages, or bypassed
+the team entirely, and required messages that were never correlated blocked
+the graph forever.
 
-TeamKit is informed by common agent-collaboration patterns:
-
-- explicit agent profile and responsibility boundaries
-- structured inter-agent communication
-- shared run/topic workspace with a thin coordination Topic
-- managed Context Item visibility
-- artifact handoff and reference preservation
-- human input or human decision as a first-class event
-- message and event visibility for debugging and governance
-
-TeamKit does not turn a chat thread into a durable agent. It defines reusable team files and per-run workspaces instead.
-
-## Layered Architecture
+v0.4 inverts the relationship:
 
 ```text
-Business User
-  -> Team Builder Skill / Team Studio / editable config files
-  -> User Model
-  -> TeamKit Core Model
-  -> Team Compiler
-  -> Adapter Boundary
-  -> WorkBuddy Adapter, or another platform adapter
-  -> target runtime agents, messages, skills, tasks, and artifacts
-
-Side channel:
-  Run Workspace
-  Topic
-  Context Item Ledger
-  Event and Message Ledgers
-  Artifacts
-  Decision Log
+                 transport (what agents do)          observation (what TeamKit records)
+Host platform    TeamCreate / Agent / SendMessage  ->  native team files + lead transcript
+                                                      |
+TeamKit          run init, graph advance,             v
+                 result publish, run close  <----  sync -> ledgers -> audit
 ```
+
+* **Native tools are the only transport.** Generated prompts never ask an agent
+  to double-book a message.
+* **TeamKit observes.** Host adapters read the platform's own records and write
+  them into the run ledgers idempotently, correlating replies and flagging
+  protocol violations.
+* **Agents run four ledger commands**: `run init`, `graph advance`,
+  `result publish`, `run close` (plus `run status` when unsure). Everything else
+  is captured automatically.
+* **The audit answers "did the protocol hold?"** with PASS / PASS_WITH_WARNINGS
+  / FAIL / UNVERIFIED. Unobservable runs are never reported as PASS.
+
+Platforms without a native channel keep using `teamkit msg send/reply`, which
+remains a complete, command-mediated transport.
 
 ## Layers
 
-### Command Layer
+```text
+Business user
+  -> agent-team-builder skill / editable files (team.yaml, experts/*.md, references/*)
+  -> User model (team, experts, flow graph, contexts, output)
+  -> TeamKit Core: validation, graph engine, run ledgers, audit
+  -> Adapter boundary
+  -> WorkBuddy adapter (roster, prompts, package, installer, native sync)
+  -> host runtime agents, native messages, tasks
+```
 
-Provides deterministic actions for stable collaboration operations.
+### Definition layer
 
-Agents should not directly edit communication ledgers, event ledgers, artifact indexes, or final result records. They should use commands such as:
+`team.yaml`, `experts/*.md`, `references/*`. Profiles contain business content
+only; the collaboration protocol is injected per platform at export time.
+Optional adapter manifests (for example `workbuddy.yaml`) sit beside
+`team.yaml` and never inside it.
 
-- `teamkit msg send`
-- `teamkit msg reply`
-- `teamkit topic update`
-- `teamkit context add`
-- `teamkit context list`
-- `teamkit graph next`
-- `teamkit graph advance`
-- `teamkit run close`
-- `teamkit human request`
-- `teamkit artifact publish`
-- `teamkit result publish`
+### Core
 
-This follows the lesson that strong coordination semantics should be implemented by tools and commands rather than by asking agents to remember a text convention.
+| Module | Responsibility |
+|---|---|
+| `teamkit/team.py` | `TeamContext`: experts, graph, contexts, communication policy, run locations |
+| `teamkit/validation.py` | definition errors and shape warnings (unreachable nodes, broken forks/joins) |
+| `teamkit/graph.py` | graph execution over the Topic: next actions, advance, fork/join, terminal nodes |
+| `teamkit/runs.py` | `RunStore` and run ledgers: state, topic, messages, events, artifacts, human input, closure, reply correlation |
+| `teamkit/contexts.py` | Context Items: team-level declarations and per-run managed copies |
+| `teamkit/batch.py` | case queue for one-run-per-case batches |
+| `teamkit/audit.py` | protocol-compliance audit of one run |
+| `teamkit/plan.py` | platform-neutral execution plan |
+| `teamkit/fsutil.py` | atomic writes, crash-tolerant JSONL, locks, YAML (installed or vendored) |
+| `teamkit/cli.py` | argument parsing and output only |
 
-### Skill Layer
+### Adapter layer
 
-Provides guided creation and iteration:
+`teamkit/adapters/__init__.py` resolves an adapter by the platform name stored in
+a run's host binding and exposes `sync_bound_run(store)`, which every
+state-reading command calls under the run lock. Sync is observation, never a
+gate: an adapter failure becomes a warning.
 
-- `agent-team-builder`: interviews the user and creates or updates a team.
-- `agent-prompt-optimizer`: improves expert profiles after design or run feedback.
-- `agent-team-optimizer`: reviews and optimizes existing multi-agent teams on any platform — communication patterns, scheduling efficiency, structure, and architecture fit — with per-change user approval.
-- future: `run-review`: reviews a completed run and suggests changes.
+The WorkBuddy adapter (`teamkit/adapters/workbuddy/`):
 
-### Studio Layer
+| Module | Responsibility |
+|---|---|
+| `paths.py` | host locations, bundled Python discovery, and the **roster**: expert id <-> Agent ID <-> native member name |
+| `prompts.py` | lead/member/skill markdown that follows WorkBuddy's official expert-team rules and compiles the graph into an SOP |
+| `package.py` | team and Workbench package export, launcher, vendored runtime, closure validation |
+| `installer.py` | transactional install, uninstall to backups, official validator, `doctor` |
+| `native.py` | native sync: team config, member inboxes, lead transcript, task list -> ledgers and violations |
 
-Provides a page-based experience when a host platform supports it. In the current adapter this can be surfaced inside WorkBuddy:
+See [adapter development](adapter-development.md) for the adapter contract.
 
-- create or open a team
-- edit experts and process
-- assign managed Context Items to the whole team or selected experts
-- start a run
-- inspect Topic state, messages, context, artifacts, and final output
+### Run workspace
 
-The Studio should edit the same files that the Skills edit.
+One directory per run (`runs/<run-id>/` or the adapter-provided
+`TEAMKIT_RUNS_DIR`): `state.yaml`, `topic.yaml`, `messages.jsonl`,
+`events.jsonl`, `context-items.jsonl`, `human-review.jsonl`, `artifacts/`,
+`contexts/`, `experts/`, `decision-log.md`, and `native-sync.json` (sync cursor).
+See [run workspace](run-workspace.md).
 
-### Definition Layer
+## Invariants
 
-Stores the source of truth:
+1. Ledger writes happen under the run lock and are atomic (temp file + rename)
+   or fsync'd appends; a truncated JSONL line is skipped and reported, never fatal.
+2. Native sync is idempotent: every native record has a stable key.
+3. A required message blocks only the graph node it names. Replies are
+   correlated automatically (explicit `replyTo`, `[TeamKit ... re=...]`, or the
+   recipient answering the sender); questions and escalations never close a request.
+4. `graph advance --force` needs `--reason` and is recorded for the audit.
+5. `run init --force` archives the previous run; installs and uninstalls move the
+   previous package to `teamkit-backups/`. TeamKit never deletes run data.
+6. Closing a run closes its open required messages and its active nodes.
 
-- `team.yaml`
-- `experts/*.md`
-- `references/*`
-- optional reusable `contexts/*`
-- run workspaces under `runs/*`
+## Governance
 
-This keeps the system inspectable, copyable, and versionable.
-
-### Team Compiler
-
-Transforms the user model into a platform-independent TeamKit execution plan:
-
-- expert definitions -> role contracts and profile text
-- process graph -> graph nodes, edges, and message permissions
-- context declarations -> managed Context Item visibility
-- tool/data needs described in profiles -> capability expectations outside Core
-- output definition -> final-output contract
-
-### Adapter Boundary
-
-Maps the TeamKit execution plan to a target runtime. The Adapter should prefer official platform communication, task, artifact, and skill mechanisms when they exist.
-
-The Adapter is deliberately after the platform-independent architecture. Team organization, logical message semantics, Topic behavior, Context Item visibility, and collaboration workspace rules must be defined before binding to platform-specific APIs.
-
-The Adapter may be invoked by TeamKit commands, but it does not define the core command contract.
-
-Physical message delivery is performed by agents inside their host runtime with
-native tools. TeamKit never writes host inboxes or maps commands to messaging APIs.
-
-### Run Workspace
-
-Records each task execution:
-
-- run brief
-- managed Context Items
-- logical messages
-- optional external tool/data snapshots
-- artifacts
-- human input requests
-- final output
-
-The workspace also defines file ownership rules so multiple experts can collaborate without overwriting canonical files. See `collaboration-workspace.md`.
-
-### Governance and Visibility
-
-Makes the work inspectable:
-
-- who did what
-- what context or tool output was consulted
-- which expert produced which conclusion
-- which stable references support the final decision
-- where a human was asked to decide
-
-## First Implementation Shape
-
-Start with files, commands, and skills, then add a page:
-
-1. Define `team.yaml`.
-2. Add example expert profile files.
-3. Implement focused `teamkit` command behavior.
-4. Implement Team Builder Skill.
-5. Implement Prompt Optimizer Skill.
-6. Compile a platform-independent execution plan.
-7. Export and install the Agents TeamKit 工作台 WorkBuddy entry package.
-8. Export and install user-defined WorkBuddy Team expert packages through the package-level Adapter.
-9. Keep native messaging/task sync outside TeamKit Core; generated agents use host
-   tools for physical delivery after the target platform capability is verified.
-10. Add Team Studio once the file and command protocol stabilizes.
+Every run can answer: who was dispatched for which node, who answered, which
+routes were used and whether they were allowed, which nodes advanced with or
+without the owner's own result, where a human was asked to decide, and which
+overrides were forced. `teamkit run audit --run <id>` prints that answer.

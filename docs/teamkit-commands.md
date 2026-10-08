@@ -3,8 +3,10 @@
 TeamKit commands are the deterministic action layer of the architecture.
 
 Agents should not directly edit ledgers or canonical shared files. They call commands;
-commands update the run workspace and append ledgers. Physical message delivery is
-performed by the sender agent with the host platform's native member-messaging tool.
+commands update the run workspace and append ledgers. On hosts with a native
+member channel (WorkBuddy), messages travel through native tools and the adapter
+syncs them into the ledgers before every state-reading command; nobody runs
+`msg send` there.
 
 ## Design Goals
 
@@ -17,13 +19,13 @@ performed by the sender agent with the host platform's native member-messaging t
 
 ```text
 Agent intent
-  -> teamkit command
-  -> run workspace ledger/artifact update
-  -> sender agent uses host-native communication tool when a message must be delivered
+  -> native host tool (Agent, SendMessage)        -> host records -> adapter sync -> ledgers
+  -> teamkit command (run/graph/result/human)     -> ledgers
 ```
 
-The first version records logical messages locally. The host platform owns the actual
-delivery mechanism; WorkBuddy generated agents use `SendMessage`.
+Commands that read run state (`run status`, `graph next`, `graph advance`,
+`msg list`, `run audit`, `run close`) first sync native host activity when the
+run is bound to a host session. Pass `--no-sync` to skip it where offered.
 
 ## Minimal Command Set
 
@@ -156,6 +158,12 @@ Responsibilities:
 - create `state.yaml`
 - create empty ledgers
 - create per-expert folders
+- record the host binding (`state.host`) when a host launcher declared one
+  (`TEAMKIT_HOST`, `CODEBUDDY_SESSION_ID`, working directory, package)
+
+Options: `--force` starts the run over; the previous run directory is moved to
+`.archive/` beside it, never deleted. `--native-team <name>` binds a known host
+team. `--json` returns the run root, archive path and `nextStep`.
 
 Writes:
 
@@ -180,14 +188,42 @@ teamkit run status --team team.yaml --run run-001
 
 Responsibilities:
 
-- read `state.yaml`
-- summarize active graph node, open messages, open human input, managed context, artifacts, and final output status
+- sync native host activity first when the run is bound (`--no-sync` to skip); the
+  report is included as `sync`
+- summarize active nodes, open messages, open human input, managed context, artifacts, and final output status
+- return `nextExpert`/`nextTask` for a single active node and a one-sentence
+  `nextStep` that says what unblocks the run
+- report damaged ledger lines as `ledgerWarnings` instead of failing
+
+### `teamkit run audit`
+
+Check whether a run followed the team protocol.
+
+```sh
+teamkit run audit --team team.yaml --run run-001 [--json] [--strict]
+```
+
+Checks ledger integrity, host binding, attribution of native records, protocol
+violations, member results behind each member-owned node that advanced, results
+that ran ahead of the graph, open required messages, forced advances, graph
+progress, open blocking human input and the final result. Verdict: `PASS`,
+`PASS_WITH_WARNINGS`, `FAIL`, or `UNVERIFIED` (collaboration not observable).
+`--strict` exits 1 on `FAIL`.
+
+### `teamkit run bind`
+
+Bind a run to a host session or native team after the fact.
+
+```sh
+teamkit run bind --team team.yaml --run run-001 --native-team contract-order-audit-56af
+```
 
 ### `teamkit run close`
 
 Close a task run explicitly when the business process considers its work complete.
 Closing does not require a final file, open-message check, human-review check, or
-graph-completion check.
+graph-completion check. `--status completed|failed|cancelled` records how the
+business task ended (default `completed`).
 
 ```sh
 teamkit run close \
@@ -199,8 +235,10 @@ teamkit run close \
 
 Responsibilities:
 
-- set `state.yaml` status to `completed`
-- mark the Topic as `resolved` when one exists and clear its waiting condition
+- sync native host activity first, so nothing is lost if the host team is cleaned up afterwards
+- set `state.yaml` status and `closedAt`
+- close open required messages with resolution `run_closed`
+- mark the Topic as `resolved`, clear its waiting condition and mark active nodes `done`
 - record an optional summary only when supplied by the caller
 - append a `run.closed` event
 
@@ -321,8 +359,10 @@ Responsibilities:
 - validate the selected edge is available and has not exceeded `max_visits`
 - reject using `--edge` and `--to` together, and reject selecting one parallel edge from a fork
 - activate all allowed parallel branches for an implicit fork
-- refuse to advance while the source node has unresolved required messages or is waiting
-- update `topic.yaml` and `state.yaml`
+- refuse to advance while the source node has unresolved required messages or is
+  waiting, unless `--force --reason "<why>"` is given (recorded as `forced` in the event)
+- refuse to advance from an end node (no outgoing edges): close the run instead
+- update `topic.yaml` and `state.yaml` (a `prepared` run becomes `running`)
 - append event to `events.jsonl`
 
 ### `teamkit msg send`
@@ -350,9 +390,13 @@ Responsibilities:
 - generate message ID
 - append logical message to `messages.jsonl`
 - append event to `events.jsonl`
+- if the message answers an open required message from the recipient (same node
+  when both name one), mark that message `replied` and set `replyTo` — unless the
+  new message is typed `question` or `escalation`
 - return message ID
-- delivery: the sender member uses its host platform's native member-messaging tool
-  (WorkBuddy: `SendMessage`); see the Communication Guidance in generated team templates
+
+`msg send` is the transport for hosts without a native member channel. On
+WorkBuddy, agents use `SendMessage` and TeamKit records it through sync.
 
 ### `teamkit msg reply`
 
@@ -505,6 +549,9 @@ Responsibilities:
 - set `topic.yaml` to `waiting` with a `human_review` waiting reference
 - append event to `events.jsonl`
 
+Add `--non-blocking` for a follow-up that should be recorded without pausing
+the run: the run and Topic are not put into a waiting state.
+
 ### `teamkit human resolve`
 
 Record a human decision and close the human request.
@@ -555,84 +602,19 @@ separately when the business process is complete.
 
 ## WorkBuddy Adapter Commands
 
-The following commands belong to the current WorkBuddy Adapter. They are not part of the platform-independent core model.
+These belong to the WorkBuddy adapter, not to the platform-independent core.
+See [workbuddy-adapter.md](workbuddy-adapter.md) for the full flow.
 
-### `teamkit workbuddy detect`
-
-Detect local WorkBuddy desktop installation and user expert marketplace paths.
-
-```sh
-teamkit workbuddy detect --json
-```
-
-### `teamkit workbuddy export-init`
-
-Export the Agents TeamKit 工作台 WorkBuddy entry package.
-
-```sh
-teamkit workbuddy export-init \
-  --out build/workbuddy \
-  --force
-```
-
-Responsibilities:
-
-- generate an installable `Agents TeamKit 工作台` WorkBuddy package
-- bundle every repository Skill (including `agent-team-builder`,
-  `agent-prompt-optimizer`, and `agent-team-optimizer`) plus a generic TeamKit
-  command wrapper
-- include TeamKit docs, schema, and vendored CLI for self-contained team creation and validation
-
-### `teamkit workbuddy export`
-
-Export a TeamKit team definition as a WorkBuddy Team expert package.
-
-```sh
-teamkit workbuddy export \
-  --team team.yaml \
-  --out build/workbuddy \
-  --force
-```
-
-Responsibilities:
-
-- validate `team.yaml`
-- generate `.codebuddy-plugin/plugin.json`
-- generate WorkBuddy lead and member agent files
-- bundle a `teamkit-runtime` skill and command wrapper
-- copy the TeamKit workspace and vendored TeamKit CLI into the package
-
-### `teamkit workbuddy install`
-
-Install and register a generated WorkBuddy Team package.
-
-```sh
-teamkit workbuddy install \
-  --package build/workbuddy/risk-review \
-  --force
-```
-
-Responsibilities:
-
-- copy the package into WorkBuddy's user expert marketplace
-- update `marketplace.json`
-- keep package registration deterministic and repeatable
-
-### `teamkit workbuddy uninstall`
-
-Remove an installed WorkBuddy package from the user expert marketplace.
-
-```sh
-teamkit workbuddy uninstall \
-  --package agents-teamkit-workbench \
-  --force
-```
-
-Responsibilities:
-
-- remove the installed package directory
-- remove the package registration from `marketplace.json`
-- leave TeamKit Core definitions and generated build outputs untouched
+| Command | Purpose |
+|---|---|
+| `teamkit workbuddy detect [--json]` | WorkBuddy app, CLI, validator and directory locations |
+| `teamkit workbuddy doctor [--json]` | read-only health check: app, validator, Python, installed TeamKit packages (version, legacy launcher, registration) |
+| `teamkit workbuddy export-init --out <dir> [--force]` | build the Agents TeamKit 工作台 package (all repository skills + runtime) |
+| `teamkit --team team.yaml workbuddy export --out <dir> [--force] [--name <pkg>]` | build a team package: lead/member agents, compiled SOP, roster, launcher, vendored runtime |
+| `teamkit workbuddy install --package <dir> [--force] [--strict]` | transactional install with closure + official validation; previous version moved to `teamkit-backups/` |
+| `teamkit workbuddy uninstall --package <name> [--force]` | move the package to `teamkit-backups/` and unregister it |
+| `teamkit --team team.yaml workbuddy sync --run <id> [--native-team <name>]` | ingest native team activity now |
+| `teamkit workbuddy teams [--native-team <name>]` | list native Agent Teams, or describe one |
 
 ## Files Agents Must Not Edit Directly
 
@@ -653,13 +635,13 @@ Agents should publish official results through `teamkit artifact publish`.
 
 ## Adapter Boundary
 
-A platform Adapter does not map core message commands to a native messaging API in the
-current design. The sender agent performs physical delivery:
+Adapters never map message commands to host messaging APIs and never write host
+inboxes. On hosts with a native member channel the adapter observes the host's
+own records:
 
 ```text
-teamkit msg send
-  -> append messages.jsonl
-  -> sender member calls WorkBuddy SendMessage
+lead/member -> WorkBuddy Agent / SendMessage -> teams/<team>/inboxes, lead transcript
+TeamKit command -> adapter sync -> messages.jsonl, events.jsonl
 ```
 
-The command contract should remain stable even if host-platform APIs change.
+The command contract stays stable even if host-platform APIs change.

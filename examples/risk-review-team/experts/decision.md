@@ -38,15 +38,3 @@
 
 ## Evidence Rules
 - 报告中的每个主要结论必须引用材料、业务数据、规则或专家结果。
-
-## TeamKit Rules
-- 查看当前协作状态使用 `teamkit topic status` 和 `teamkit graph next`。
-- 作为协调者时，推进流程必须使用 `teamkit graph advance`；更新摘要、等待状态或证据链接使用 `teamkit topic update`。
-- 与其他专家沟通必须使用 `teamkit msg send`。
-- 回复指定消息必须使用 `teamkit msg reply`。
-- 记录外部查询或 API 结果为受管 Context Item 时，必须使用 `teamkit context add`。
-- 触发人工复核必须使用 `teamkit human request`。
-- 发布正式专家结果必须使用 `teamkit artifact publish`。
-- 发布最终报告必须使用 `teamkit result publish`。
-- 不直接编辑 `messages.jsonl`、`events.jsonl`、`human-review.jsonl`、`state.yaml`、`topic.yaml` 或最终结果发布记录。
-- 不维护自己的全局流程副本；以 Topic、Graph 和 Message 状态为准。
