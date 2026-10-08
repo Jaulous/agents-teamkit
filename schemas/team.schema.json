@@ -3,14 +3,27 @@
   "$id": "https://raw.githubusercontent.com/Jaulous/agents-teamkit/main/schemas/team.schema.json",
   "title": "TeamKit Team Definition",
   "type": "object",
-  "required": ["version", "team", "experts", "process", "output"],
+  "required": [
+    "version",
+    "team",
+    "experts",
+    "process",
+    "output"
+  ],
   "properties": {
     "version": {
-      "type": ["string", "number"]
+      "type": [
+        "string",
+        "number"
+      ]
     },
     "team": {
       "type": "object",
-      "required": ["id", "name", "purpose"],
+      "required": [
+        "id",
+        "name",
+        "purpose"
+      ],
       "properties": {
         "id": {
           "type": "string",
@@ -32,7 +45,11 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["id", "name", "profile"],
+        "required": [
+          "id",
+          "name",
+          "profile"
+        ],
         "properties": {
           "id": {
             "type": "string",
@@ -51,6 +68,10 @@
             "items": {
               "type": "string"
             }
+          },
+          "role": {
+            "type": "string",
+            "description": "One-line responsibility; shown in generated rosters."
           }
         },
         "additionalProperties": true
@@ -60,7 +81,10 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "name"],
+        "required": [
+          "id",
+          "name"
+        ],
         "properties": {
           "id": {
             "type": "string",
@@ -81,7 +105,10 @@
           },
           "scope": {
             "type": "string",
-            "enum": ["team", "agents"]
+            "enum": [
+              "team",
+              "agents"
+            ]
           },
           "visible_to": {
             "type": "array",
@@ -116,11 +143,16 @@
     },
     "process": {
       "type": "object",
-      "required": ["mode", "graph"],
+      "required": [
+        "mode",
+        "graph"
+      ],
       "properties": {
         "mode": {
           "type": "string",
-          "enum": ["graph"]
+          "enum": [
+            "graph"
+          ]
         },
         "entry": {
           "type": "string"
@@ -131,19 +163,27 @@
         "coordinator": {
           "type": "string"
         },
-          "communication": {
-            "type": "object",
-            "properties": {
+        "communication": {
+          "type": "object",
+          "properties": {
             "mode": {
               "type": "string",
-              "enum": ["manual", "hybrid", "lead"]
+              "enum": [
+                "manual",
+                "hybrid",
+                "lead"
+              ]
             },
             "allow_expert_requests": {
               "type": "boolean"
             },
             "default_response": {
               "type": "string",
-              "enum": ["required", "optional", "none"]
+              "enum": [
+                "required",
+                "optional",
+                "none"
+              ]
             },
             "allowed_message_types": {
               "type": "array",
@@ -155,7 +195,11 @@
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["from", "to", "when"],
+                "required": [
+                  "from",
+                  "to",
+                  "when"
+                ],
                 "properties": {
                   "from": {
                     "type": "string"
@@ -168,7 +212,11 @@
                   },
                   "response": {
                     "type": "string",
-                    "enum": ["required", "optional", "none"]
+                    "enum": [
+                      "required",
+                      "optional",
+                      "none"
+                    ]
                   }
                 },
                 "additionalProperties": true
@@ -179,7 +227,11 @@
         },
         "graph": {
           "type": "object",
-          "required": ["entry", "nodes", "edges"],
+          "required": [
+            "entry",
+            "nodes",
+            "edges"
+          ],
           "properties": {
             "entry": {
               "type": "string"
@@ -189,7 +241,11 @@
               "minItems": 1,
               "items": {
                 "type": "object",
-                "required": ["id", "expert", "task"],
+                "required": [
+                  "id",
+                  "expert",
+                  "task"
+                ],
                 "properties": {
                   "id": {
                     "type": "string",
@@ -203,7 +259,9 @@
                   },
                   "join": {
                     "type": "string",
-                    "enum": ["all"]
+                    "enum": [
+                      "all"
+                    ]
                   }
                 },
                 "additionalProperties": true
@@ -213,7 +271,10 @@
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["from", "to"],
+                "required": [
+                  "from",
+                  "to"
+                ],
                 "properties": {
                   "id": {
                     "type": "string",
@@ -298,7 +359,9 @@
     },
     "output": {
       "type": "object",
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "properties": {
         "name": {
           "type": "string",

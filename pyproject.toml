@@ -8,8 +8,9 @@ version = "0.3.4"
 description = "Agents TeamKit is a lightweight multi-agent team architecture kit for business workflows."
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.10"
-dependencies = ["PyYAML>=6.0"]
+requires-python = ">=3.9"
+# PyYAML is used when installed; a pure-Python copy is vendored in teamkit/_vendor.
+dependencies = []
 keywords = ["agents", "multi-agent", "workflow", "teamkit", "workbuddy"]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -18,7 +19,7 @@ classifiers = [
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.9",
   "Topic :: Software Development :: Libraries",
 ]
 
@@ -30,5 +31,9 @@ Homepage = "https://github.com/Jaulous/agents-teamkit"
 Repository = "https://github.com/Jaulous/agents-teamkit"
 Issues = "https://github.com/Jaulous/agents-teamkit/issues"
 
-[tool.setuptools]
-packages = ["teamkit"]
+[tool.setuptools.packages.find]
+include = ["teamkit*"]
+
+[tool.setuptools.package-data]
+"teamkit._vendor" = ["README.md"]
+"teamkit._vendor.yaml" = ["LICENSE"]

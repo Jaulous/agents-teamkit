@@ -10,7 +10,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import yaml
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from teamkit.fsutil import yaml  # noqa: E402  (installed PyYAML or the vendored copy)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -127,7 +128,7 @@ class TeamKitCliTest(unittest.TestCase):
         self.assertEqual(plan["adapterBoundary"]["availableAdapters"], ["workbuddy"])
         self.assertEqual(plan["process"]["graph"]["entry"], "material_intake")
         self.assertNotIn("mainSteps", plan["process"])
-        self.assertEqual(plan["commandContract"]["run"], "teamkit run init/status/close")
+        self.assertEqual(plan["commandContract"]["run"], "teamkit run init/status/close/audit/bind")
         self.assertEqual(plan["commandContract"]["topic"], "teamkit topic status/update/link")
         self.assertEqual(plan["commandContract"]["context"], "teamkit context add/list")
         self.assertEqual(plan["commandContract"]["graph"], "teamkit graph next/advance")
@@ -734,11 +735,14 @@ class TeamKitCliTest(unittest.TestCase):
         self.assertTrue((package_dir / ".codebuddy-plugin" / "plugin.json").exists())
         self.assertTrue((package_dir / "settings.json").exists())
         self.assertTrue((package_dir / "skills" / "teamkit-runtime" / "SKILL.md").exists())
-        wrapper_path = package_dir / "skills" / "teamkit-runtime" / "scripts" / "teamkit.py"
-        self.assertTrue(wrapper_path.exists())
-        self.assertIn(".agents-teamkit-runtime", wrapper_path.read_text(encoding="utf-8"))
+        launcher_path = package_dir / "skills" / "teamkit-runtime" / "scripts" / "teamkit"
+        self.assertTrue(launcher_path.exists())
+        self.assertTrue(os.access(launcher_path, os.X_OK))
+        self.assertNotIn(".agents-teamkit-runtime", launcher_path.read_text(encoding="utf-8"))
         self.assertTrue((package_dir / "teamkit-workspace" / "team.yaml").exists())
-        self.assertTrue((package_dir / "vendor" / "teamkit" / "teamkit" / "cli.py").exists())
+        self.assertTrue((package_dir / "teamkit-workspace" / "roster.json").exists())
+        self.assertTrue((package_dir / "vendor" / "teamkit" / "cli.py").exists())
+        self.assertTrue((package_dir / "vendor" / "teamkit" / "_vendor" / "yaml" / "__init__.py").exists())
 
         plugin = json.loads((package_dir / ".codebuddy-plugin" / "plugin.json").read_text(encoding="utf-8"))
         self.assertEqual(plugin["expertType"], "team")
@@ -747,27 +751,26 @@ class TeamKitCliTest(unittest.TestCase):
         self.assertEqual(len(plugin["tags"]), 3)
         self.assertEqual(len(plugin["quickPrompts"]), 3)
 
-        # Generated agents must explain that ledger recording is distinct from
-        # physical delivery through WorkBuddy's native member tool.
+        # Generated agents follow the native-first protocol: native tools carry
+        # every message and TeamKit only needs run/graph/result commands.
         lead_md = package_dir / "agents" / f"{plugin['agentName']}.md"
-        member_mds = [
-            package_dir / "agents" / f"{member}.md"
-            for member in plugin["teamInfo"]["memberAgents"]
-        ]
-        for md in [lead_md, *member_mds]:
-            text = md.read_text(encoding="utf-8")
-            self.assertIn("## 消息送达", text)
-            self.assertIn("SendMessage", text)
-            self.assertIn("不代表消息已经送达对方", text)
-            self.assertIn("--reply-to", text)
-            self.assertIn("必须通过 `SendMessage` 将完整结果回传主理人", text)
-            self.assertFalse(any(line.strip()[:2].isdigit() for line in text.splitlines()))
+        lead_text = lead_md.read_text(encoding="utf-8")
+        self.assertIn("TeamCreate", lead_text)
+        self.assertIn("name` 与 `subagent_type` 都必须填 **Agent ID**", lead_text)
+        self.assertIn("[TeamKit run=<run-id> node=<节点ID>]", lead_text)
+        self.assertIn("graph advance --run <run-id>", lead_text)
+        self.assertIn("禁止重复创建同一成员", lead_text)
+        self.assertIn("审核结论专家", lead_text)  # coordinator profile is embedded
+        self.assertNotIn("TeamKit Rules", lead_text)
+        self.assertNotIn("msg send", lead_text.split("账本说明")[0])
+        for member in plugin["teamInfo"]["memberAgents"]:
+            text = (package_dir / "agents" / f"{member}.md").read_text(encoding="utf-8")
+            self.assertIn("recipient`=`team-lead`", text)
+            self.assertIn(f"Agent ID `{member}`", text)
+            self.assertNotIn("TeamKit Rules", text)
 
-        skill_text = (package_dir / "skills" / "teamkit-runtime" / "SKILL.md").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn("## 消息送达", skill_text)
-        self.assertIn("SendMessage", skill_text)
+        skill_text = (package_dir / "skills" / "teamkit-runtime" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("run status --run <run-id>", skill_text)
 
         install_result = self.run_cli(
             "workbuddy",
@@ -787,7 +790,7 @@ class TeamKitCliTest(unittest.TestCase):
         self.assertTrue(any(item["name"] == "risk-review" for item in marketplace["plugins"]))
 
         wrapper_result = subprocess.run(
-            [sys.executable, str(package_dir / "skills" / "teamkit-runtime" / "scripts" / "teamkit.py"), "team", "validate"],
+            [str(installed_dir / "skills" / "teamkit-runtime" / "scripts" / "teamkit"), "team", "validate"],
             cwd=self.workdir,
             text=True,
             capture_output=True,
@@ -877,41 +880,43 @@ class TeamKitCliTest(unittest.TestCase):
 
         # Exercise the staging failure path directly without changing source
         # files: the package builder must leave the previous package untouched.
-        from teamkit import cli as cli_module
+        from teamkit.adapters.workbuddy import package as package_module
+        from teamkit.errors import TeamKitError
 
-        original = cli_module.workbuddy_init_skill_names
-        cli_module.workbuddy_init_skill_names = lambda _repo_root: (_ for _ in ()).throw(
-            cli_module.TeamKitError("injected export failure")
+        original = package_module.write_launcher
+        package_module.write_launcher = lambda _skill_dir: (_ for _ in ()).throw(
+            TeamKitError("injected export failure")
         )
         try:
-            with self.assertRaises(cli_module.TeamKitError):
-                cli_module.export_workbuddy_init_package(
+            with self.assertRaises(TeamKitError):
+                package_module.export_workbench_package(
                     self.workdir / "build" / "workbuddy",
                     "agents-teamkit-workbench",
                     True,
                 )
         finally:
-            cli_module.workbuddy_init_skill_names = original
+            package_module.write_launcher = original
         self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
 
     def test_workbuddy_install_renders_final_runtime_paths(self) -> None:
-        from teamkit import cli as cli_module
+        from teamkit.adapters.workbuddy import installer
 
         staging = self.workdir / "staging"
         target = self.workdir / "installed" / "risk-review"
-        wrapper = staging / "skills" / "teamkit-runtime" / "scripts" / "teamkit.py"
+        launcher = staging / "skills" / "teamkit-runtime" / "scripts" / "teamkit"
         skill = staging / "skills" / "teamkit-runtime" / "SKILL.md"
-        wrapper.parent.mkdir(parents=True)
-        wrapper.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+        agent = staging / "agents" / "risk-review-team-lead.md"
+        launcher.parent.mkdir(parents=True)
+        agent.parent.mkdir(parents=True)
+        launcher.write_text("#!/bin/sh\n", encoding="utf-8")
         skill.write_text("{{TEAMKIT_SCRIPT}} team validate\n", encoding="utf-8")
+        agent.write_text("`{{TEAMKIT_SCRIPT}} run status`\n", encoding="utf-8")
 
-        cli_module.render_installed_teamkit_script_paths(staging, target)
+        installer.render_launcher_paths(staging, target)
 
-        self.assertEqual(
-            skill.read_text(encoding="utf-8"),
-            str((target / "skills" / "teamkit-runtime" / "scripts" / "teamkit.py").resolve())
-            + " team validate\n",
-        )
+        expected = (target / "skills" / "teamkit-runtime" / "scripts" / "teamkit").as_posix()
+        self.assertEqual(skill.read_text(encoding="utf-8"), expected + " team validate\n")
+        self.assertIn(expected, agent.read_text(encoding="utf-8"))
         self.assertNotIn(str(staging), skill.read_text(encoding="utf-8"))
 
     def test_workbuddy_install_rejects_nested_source_and_preserves_target_on_validation_failure(self) -> None:
@@ -967,14 +972,14 @@ class TeamKitCliTest(unittest.TestCase):
         self.assertNotEqual(broken_result.returncode, 0)
         self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
 
-    def test_communication_guidance_block_is_clean(self) -> None:
-        from teamkit.cli import COMMUNICATION_GUIDANCE_BLOCK
+    def test_profile_protocol_sections_are_replaced_by_adapter_protocol(self) -> None:
+        from teamkit.adapters.workbuddy.prompts import strip_protocol_sections
 
-        self.assertIn("SendMessage", COMMUNICATION_GUIDANCE_BLOCK)
-        self.assertIn("--reply-to", COMMUNICATION_GUIDANCE_BLOCK)
-        self.assertIn("必须通过 `SendMessage` 将完整结果回传主理人", COMMUNICATION_GUIDANCE_BLOCK)
-        self.assertNotIn("{", COMMUNICATION_GUIDANCE_BLOCK)
-        self.assertNotIn("}", COMMUNICATION_GUIDANCE_BLOCK)
+        profile = "# Expert\n\n## Identity\nRole.\n\n## TeamKit Rules\n- use teamkit msg send\n\n## Evidence Rules\n- cite.\n"
+        stripped = strip_protocol_sections(profile)
+        self.assertNotIn("msg send", stripped)
+        self.assertIn("## Evidence Rules", stripped)
+        self.assertIn("## Identity", stripped)
 
     def test_workbuddy_export_init_creates_teamkit_workbench_package(self) -> None:
         result = self.run_cli(
@@ -1006,12 +1011,11 @@ class TeamKitCliTest(unittest.TestCase):
             and (path / "SKILL.md").is_file()
         )
         self.assertEqual(exported_skill_names, source_skill_names)
-        wrapper_path = package_dir / "skills" / "agents-teamkit-workbench-runtime" / "scripts" / "teamkit.py"
-        self.assertTrue(wrapper_path.exists())
-        self.assertIn(".agents-teamkit-runtime", wrapper_path.read_text(encoding="utf-8"))
+        launcher_path = package_dir / "skills" / "agents-teamkit-workbench-runtime" / "scripts" / "teamkit"
+        self.assertTrue(launcher_path.exists())
         self.assertTrue((package_dir / "docs" / "coordination-model.md").exists())
         self.assertTrue((package_dir / "schemas" / "team.schema.json").exists())
-        self.assertTrue((package_dir / "vendor" / "teamkit" / "teamkit" / "cli.py").exists())
+        self.assertTrue((package_dir / "vendor" / "teamkit" / "cli.py").exists())
 
         plugin = json.loads((package_dir / ".codebuddy-plugin" / "plugin.json").read_text(encoding="utf-8"))
         self.assertEqual(plugin["expertType"], "team")
@@ -1054,15 +1058,14 @@ class TeamKitCliTest(unittest.TestCase):
             installed_dir / "skills" / "agents-teamkit-workbench-runtime" / "SKILL.md"
         ).read_text(encoding="utf-8")
         self.assertIn(
-            str(installed_dir / "skills" / "agents-teamkit-workbench-runtime" / "scripts" / "teamkit.py"),
+            (installed_dir / "skills" / "agents-teamkit-workbench-runtime" / "scripts" / "teamkit").as_posix(),
             installed_runtime_skill,
         )
         self.assertNotIn(".agents-teamkit-workbench.install-", installed_runtime_skill)
 
         wrapper_result = subprocess.run(
             [
-                sys.executable,
-                str(package_dir / "skills" / "agents-teamkit-workbench-runtime" / "scripts" / "teamkit.py"),
+                str(installed_dir / "skills" / "agents-teamkit-workbench-runtime" / "scripts" / "teamkit"),
                 "--team",
                 "team.yaml",
                 "team",
@@ -1090,6 +1093,7 @@ class TeamKitCliTest(unittest.TestCase):
         self.assertTrue(uninstall_payload["directoryExisted"])
         self.assertTrue(uninstall_payload["registrationRemoved"])
         self.assertFalse(installed_dir.exists())
+        self.assertTrue(Path(uninstall_payload["backup"]).exists())  # uninstall never destroys files
 
 
 if __name__ == "__main__":
